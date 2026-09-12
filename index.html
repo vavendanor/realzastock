@@ -4,12 +4,34 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#7e14ff" />
+    <meta name="theme-color" content="#58402D" />
     <meta
       name="description"
       content="Sistema de gestión de inventario, ventas y pedidos de Realza Hogar"
     />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400..800;1,400..700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
     <title>Realza Hogar - Gestión</title>
+    <script>
+      // 'beforeinstallprompt' se dispara una sola vez y muy temprano en la
+      // carga -- si nadie lo escucha en ese instante, se pierde para
+      // siempre (no se puede volver a pedir). React tarda en montarse
+      // (espera a verificar la sesión con Supabase antes de dibujar nada),
+      // así que el listener de React solo, dentro de un componente, puede
+      // llegar tarde. Este script corre antes que cualquier otra cosa en
+      // la página y guarda el evento en `window` para que React lo lea
+      // cuando por fin se monte, sin importar cuánto haya tardado.
+      window.__rhInstallEvent = null
+      window.addEventListener('beforeinstallprompt', (event) => {
+        event.preventDefault()
+        window.__rhInstallEvent = event
+        window.dispatchEvent(new CustomEvent('rh-install-disponible'))
+      })
+    </script>
   </head>
   <body>
     <div id="root"></div>

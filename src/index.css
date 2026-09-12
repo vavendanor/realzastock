@@ -1,8 +1,5 @@
 @import "tailwindcss";
-
-:root {
-  color-scheme: light dark;
-}
+@import "./styles/tokens.css";
 
 body {
   margin: 0;

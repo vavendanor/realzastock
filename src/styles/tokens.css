@@ -1,0 +1,255 @@
+/* ============================================================
+   Tokens del sistema de diseño de Realza Hogar
+   Portados desde el proyecto de Claude Design (tokens/*.css).
+   Mantener sincronizados: si el diseño cambia, se actualiza acá.
+   ============================================================ */
+
+/* Las tipografías (Playfair Display, Manrope, IBM Plex Mono) se cargan
+   con <link> desde index.html, no acá: un @import dentro de este archivo
+   queda después de las reglas de Tailwind y el navegador lo descarta. */
+
+:root {
+  /* ---- Paleta base (storefront + logotipo) ---- */
+  --nogal-900: #3a2a1d;
+  --nogal-800: #4a3524;
+  --nogal-700: #58402d;
+  --nogal-600: #6b5140;
+  --nogal-500: #8a6e58;
+  --cobre-700: #a65f2c;
+  --cobre-600: #c97f3f;
+  --cobre-500: #c68b68;
+  --cobre-300: #e0b79b;
+  --cobre-200: #efd8c6;
+  --cobre-100: #f7e9de;
+  --arena-100: #fbf8f5;
+  --arena-200: #f7f3ee;
+  --arena-300: #ede4da;
+  --arena-400: #e1d5c7;
+  --tinta-900: #1a1512;
+  --tinta-700: #3d342e;
+  --tinta-500: #6e625a;
+  --tinta-400: #8e8279;
+  --tinta-300: #b5aba2;
+  --blanco: #ffffff;
+
+  /* Acentos tomados de los swatches de tapiz del catálogo */
+  --rojo-600: #d6453b;
+  --rojo-100: #fbe6e4;
+  --verde-600: #3f7d57;
+  --verde-100: #e5f0e9;
+  --marino-600: #2c3a73;
+  --marino-100: #e5e8f2;
+  --ambar-500: #d9a227;
+  --ambar-100: #fbf0d8;
+
+  /* ---- Alias semánticos ---- */
+  --text-strong: var(--tinta-900);
+  --text-body: var(--tinta-700);
+  --text-muted: var(--tinta-500);
+  --text-faint: var(--tinta-400);
+  --text-invert: var(--blanco);
+  --text-accent: var(--cobre-700);
+  --text-link: var(--cobre-700);
+  --text-link-hover: var(--nogal-800);
+
+  --surface-page: var(--arena-200);
+  --surface-card: var(--blanco);
+  --surface-sunken: var(--arena-300);
+  --surface-raised: var(--arena-100);
+  --surface-brand: var(--nogal-700);
+  --surface-brand-strong: var(--nogal-900);
+  --surface-accent-soft: var(--cobre-100);
+  --surface-overlay: rgba(26, 21, 18, 0.55);
+
+  --border-hairline: var(--arena-300);
+  --border-default: var(--arena-400);
+  --border-strong: var(--tinta-300);
+  --border-focus: var(--cobre-600);
+  --border-brand: var(--nogal-700);
+
+  --action-primary: var(--nogal-700);
+  --action-primary-hover: var(--nogal-800);
+  --action-primary-active: var(--nogal-900);
+  --action-accent: var(--cobre-600);
+  --action-accent-hover: var(--cobre-700);
+  --action-ghost-hover: var(--arena-300);
+  --action-disabled: var(--arena-400);
+  --action-disabled-text: var(--tinta-400);
+
+  --state-danger: var(--rojo-600);
+  --state-danger-soft: var(--rojo-100);
+  --state-warning: var(--ambar-500);
+  --state-warning-soft: var(--ambar-100);
+  --state-success: var(--verde-600);
+  --state-success-soft: var(--verde-100);
+  --state-info: var(--marino-600);
+  --state-info-soft: var(--marino-100);
+
+  /* Estados de pedido (se usarán en el módulo de Pedidos) */
+  --pedido-pendiente: var(--tinta-500);
+  --pedido-pendiente-soft: var(--arena-300);
+  --pedido-preparacion: var(--ambar-500);
+  --pedido-preparacion-soft: var(--ambar-100);
+  --pedido-despachado: var(--marino-600);
+  --pedido-despachado-soft: var(--marino-100);
+  --pedido-entregado: var(--verde-600);
+  --pedido-entregado-soft: var(--verde-100);
+
+  /* ---- Tipografía ---- */
+  --font-display: "Playfair Display", Georgia, "Times New Roman", serif;
+  --font-sans: "Manrope", "Helvetica Neue", Helvetica, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  --text-display-xl: 56px;
+  --text-display-lg: 40px;
+  --text-display-md: 30px;
+  --text-display-sm: 24px;
+  --text-body-lg: 17px;
+  --text-body-md: 15px;
+  --text-body-sm: 13px;
+  --text-body-xs: 12px;
+  --text-eyebrow: 11px;
+
+  --lh-tight: 1.08;
+  --lh-snug: 1.25;
+  --lh-normal: 1.5;
+  --lh-loose: 1.65;
+
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+  --fw-bold: 700;
+  --fw-black: 800;
+
+  --ls-display: -0.015em;
+  --ls-normal: 0;
+  --ls-wide: 0.04em;
+  --ls-eyebrow: 0.16em;
+
+  /* Rol → receta (shorthand de `font`) */
+  --type-hero: var(--fw-medium) var(--text-display-xl) / var(--lh-tight) var(--font-display);
+  --type-h1: var(--fw-medium) var(--text-display-lg) / var(--lh-snug) var(--font-display);
+  --type-h2: var(--fw-medium) var(--text-display-md) / var(--lh-snug) var(--font-display);
+  --type-h3: var(--fw-semibold) var(--text-display-sm) / var(--lh-snug) var(--font-display);
+  --type-body: var(--fw-regular) var(--text-body-md) / var(--lh-normal) var(--font-sans);
+  --type-body-strong: var(--fw-semibold) var(--text-body-md) / var(--lh-normal) var(--font-sans);
+  --type-label: var(--fw-semibold) var(--text-body-sm) / var(--lh-snug) var(--font-sans);
+  --type-caption: var(--fw-medium) var(--text-body-xs) / var(--lh-snug) var(--font-sans);
+  --type-numeric: var(--fw-semibold) var(--text-body-md) / var(--lh-snug) var(--font-mono);
+
+  /* ---- Espaciado y medidas ---- */
+  --space-0: 0;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+
+  --radius-xs: 3px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --radius-pill: 999px;
+
+  --control-h-sm: 32px;
+  --control-h-md: 40px;
+  --control-h-lg: 48px;
+  --control-h-touch: 56px;
+
+  --layout-sidebar: 248px;
+  --layout-topbar: 64px;
+  --layout-max: 1440px;
+  --gutter-page: 32px;
+  --gutter-mobile: 16px;
+
+  /* ---- Elevación y movimiento ---- */
+  --shadow-none: none;
+  --shadow-hairline: 0 0 0 1px var(--border-hairline);
+  --shadow-card: 0 1px 2px rgba(58, 42, 29, 0.05), 0 4px 16px rgba(58, 42, 29, 0.05);
+  --shadow-raised: 0 2px 4px rgba(58, 42, 29, 0.06), 0 12px 28px rgba(58, 42, 29, 0.09);
+  --shadow-overlay: 0 24px 60px rgba(26, 21, 18, 0.22);
+  --shadow-focus: 0 0 0 3px rgba(201, 127, 63, 0.28);
+
+  --ease-out: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --ease-inout: cubic-bezier(0.4, 0, 0.2, 1);
+  --dur-fast: 120ms;
+  --dur-base: 200ms;
+  --dur-slow: 320ms;
+}
+
+/* ---- Base ---- */
+body {
+  font: var(--type-body);
+  color: var(--text-body);
+  background: var(--surface-page);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  margin: 0;
+  color: var(--text-strong);
+  letter-spacing: var(--ls-display);
+}
+h1 {
+  font: var(--type-h1);
+}
+h2 {
+  font: var(--type-h2);
+}
+h3 {
+  font: var(--type-h3);
+}
+p {
+  margin: 0;
+}
+
+a {
+  color: var(--text-link);
+  text-decoration: none;
+  transition: color var(--dur-fast) var(--ease-out);
+}
+a:hover {
+  color: var(--text-link-hover);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.rh-eyebrow {
+  font: var(--fw-bold) var(--text-eyebrow) / 1.2 var(--font-sans);
+  letter-spacing: var(--ls-eyebrow);
+  text-transform: uppercase;
+  color: var(--text-accent);
+}
+
+.rh-num {
+  font-variant-numeric: tabular-nums;
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+  border-radius: var(--radius-sm);
+}
