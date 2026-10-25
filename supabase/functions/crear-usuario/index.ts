@@ -12,9 +12,9 @@
 // de Supabase, no en el navegador: la clave queda ahí, nunca viaja
 // al cliente.
 //
-// SUPABASE_URL y SUPABASE_SERVICE_ROLE_KEY los inyecta Supabase
-// automáticamente en el entorno de toda Edge Function — no hay que
-// configurar ningún secreto a mano para que esto funcione.
+// SUPABASE_URL, SUPABASE_ANON_KEY y SUPABASE_SERVICE_ROLE_KEY los
+// inyecta Supabase automáticamente en el entorno de toda Edge Function
+// — no hay que configurar ningún secreto a mano para que esto funcione.
 //
 // Flujo:
 //   1) Verifica que quien llama esté autenticado y sea administrador
@@ -32,9 +32,23 @@
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
-const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+/* Solo la app puede llamar a esta función desde un navegador: producción,
+   las URLs de preview de Vercel y el servidor de desarrollo local. Con
+   '*' cualquier sitio podría intentarlo usando la sesión de un admin. */
+const ORIGENES_PERMITIDOS = [
+  /^https:\/\/realzastock\.vercel\.app$/,
+  /^https:\/\/realzastock-[a-z0-9-]+\.vercel\.app$/,
+  /^https?:\/\/(localhost|127\.0\.0\.1|192\.168\.\d{1,3}\.\d{1,3})(:\d+)?$/,
+]
+
+function corsPara(req: Request): Record<string, string> {
+  const origen = req.headers.get('Origin') ?? ''
+  const permitido = ORIGENES_PERMITIDOS.some((patron) => patron.test(origen))
+  return {
+    'Access-Control-Allow-Origin': permitido ? origen : 'https://realzastock.vercel.app',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    Vary: 'Origin',
+  }
 }
 
 interface Payload {
@@ -44,41 +58,48 @@ interface Payload {
   rol: 'administrador' | 'vendedor' | 'bodega'
 }
 
-function jsonResponse(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
-  })
-}
-
 Deno.serve(async (req) => {
+  const cors = corsPara(req)
+
+  const jsonResponse = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { ...cors, 'Content-Type': 'application/json' },
+    })
+
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: CORS_HEADERS })
+    return new Response(null, { headers: cors })
   }
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+    const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
     // ------------------------------------------------------------
     // 1) ¿Quién llama, y es administrador?
     // ------------------------------------------------------------
     const authHeader = req.headers.get('Authorization')
-    if (!authHeader) {
+    const token = authHeader?.replace(/^Bearer\s+/i, '')
+    if (!token) {
       return jsonResponse({ error: 'Falta el encabezado de autenticación.' }, 401)
     }
 
-    // Este cliente usa el token de quien llama (no la service_role),
-    // así que respeta RLS: solo puede leer su propia fila en "usuarios".
-    const clienteDelSolicitante = createClient(supabaseUrl, serviceRoleKey, {
-      global: { headers: { Authorization: authHeader } },
+    // Este cliente usa la clave PÚBLICA más el token de quien llama, así
+    // que tiene exactamente los permisos de esa persona y respeta RLS:
+    // solo puede leer su propia fila en "usuarios". La service_role se
+    // usa recién en el paso 3, después de confirmar que es admin.
+    const clienteDelSolicitante = createClient(supabaseUrl, anonKey, {
+      global: { headers: { Authorization: `Bearer ${token}` } },
       auth: { persistSession: false },
     })
 
+    // Se valida el token explícitamente contra Supabase Auth (no basta
+    // con que "parezca" un JWT): si está vencido o es falso, falla acá.
     const {
       data: { user: solicitante },
       error: errorAuth,
-    } = await clienteDelSolicitante.auth.getUser()
+    } = await clienteDelSolicitante.auth.getUser(token)
 
     if (errorAuth || !solicitante) {
       return jsonResponse({ error: 'Sesión inválida o expirada.' }, 401)

@@ -201,7 +201,17 @@ export async function eliminarVariante(varianteId: string) {
 
   /* Las filas de `inventario` caen solas por el ON DELETE CASCADE del esquema. */
   const { error } = await supabase.from('variantes').delete().eq('id', varianteId)
-  if (error) throw new Error(error.message)
+  if (error) {
+    /* venta_items y pedido_items apuntan a la variante sin ON DELETE CASCADE,
+       a propósito: borrarla borraría el historial de ventas. Postgres rechaza
+       el borrado con este código, y su mensaje crudo no le sirve a nadie. */
+    if (error.code === '23503') {
+      throw new Error(
+        'No se puede eliminar esta variante porque tiene ventas o pedidos registrados. Para dejar de venderla, pon su stock en 0.',
+      )
+    }
+    throw new Error(error.message)
+  }
 
   /* Si era la última variante, el producto queda sin nada vendible asociado:
      se elimina para no dejarlo huérfano en el catálogo. */
