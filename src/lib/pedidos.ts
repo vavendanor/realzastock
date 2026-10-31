@@ -38,6 +38,7 @@ interface PedidoRaw {
   direccion_ciudad: string
   direccion_region: string
   direccion_referencia: string | null
+  venta_id: string | null
   estado: EstadoPedido
   fecha_creacion: string
   fecha_actualizacion: string
@@ -45,6 +46,7 @@ interface PedidoRaw {
   usuarios: { nombre: string; email: string } | null
   pedido_items: {
     cantidad: number
+    precio_unitario: number | null
     variantes: {
       id: string
       sku: string
@@ -64,7 +66,11 @@ function aplanar(raw: PedidoRaw): Pedido {
     color: item.variantes?.color ?? '',
     material: item.variantes?.material ?? '',
     cantidad: item.cantidad,
-    precio: Number(item.variantes?.precio ?? 0),
+    /* `precio_unitario` solo viene cuando el pedido nació de una venta (se
+       copia de venta_items al crearlo): es el precio al que se vendió, y no
+       cambia aunque después suba o baje el del catálogo. En los pedidos
+       sin venta es nulo y se usa el precio actual del catálogo. */
+    precio: Number(item.precio_unitario ?? item.variantes?.precio ?? 0),
   }))
 
   return {
@@ -78,6 +84,7 @@ function aplanar(raw: PedidoRaw): Pedido {
       region: raw.direccion_region,
       referencia: raw.direccion_referencia,
     },
+    ventaId: raw.venta_id,
     estado: raw.estado,
     fechaCreacion: raw.fecha_creacion,
     fechaActualizacion: raw.fecha_actualizacion,
@@ -85,9 +92,6 @@ function aplanar(raw: PedidoRaw): Pedido {
     responsableNombre: raw.usuarios?.nombre ?? raw.usuarios?.email ?? '—',
     items,
     unidades: items.reduce((suma, item) => suma + item.cantidad, 0),
-    /* El precio se toma del catálogo actual, no de un histórico: el
-       esquema no guarda el precio vigente al momento del pedido (a
-       diferencia de venta_items, que sí tiene precio_unitario propio). */
     total: items.reduce((suma, item) => suma + item.cantidad * item.precio, 0),
   }
 }
@@ -95,10 +99,10 @@ function aplanar(raw: PedidoRaw): Pedido {
 const SELECT_PEDIDO = `
   id, cliente_nombre, cliente_contacto,
   direccion_calle, direccion_comuna, direccion_ciudad, direccion_region, direccion_referencia,
-  estado, fecha_creacion, fecha_actualizacion, responsable_id,
+  venta_id, estado, fecha_creacion, fecha_actualizacion, responsable_id,
   usuarios ( nombre, email ),
   pedido_items (
-    cantidad,
+    cantidad, precio_unitario,
     variantes ( id, sku, color, material, precio, productos ( modelo ) )
   )
 `
@@ -143,10 +147,16 @@ export interface DatosNuevoPedido {
   direccionReferencia: string
 }
 
-/* Llama a la función plpgsql de la migración 0006: crea la cabecera (con
-   la dirección de despacho) y las líneas dentro de una sola transacción,
-   validando stock combinado (bodega + showroom) sin descontarlo todavía. */
-export async function crearPedido(datos: DatosNuevoPedido, items: ItemNuevoPedido[]): Promise<string> {
+/* Llama a la función plpgsql de la migración 0008: crea la cabecera (con
+   la dirección de despacho) y las líneas dentro de una sola transacción.
+   - Sin `ventaId`: valida stock combinado (bodega + showroom) sin descontarlo.
+   - Con `ventaId`: los productos se copian de la venta en el servidor (se
+     ignora `items`) y no se valida stock, porque ya se descontó al vender. */
+export async function crearPedido(
+  datos: DatosNuevoPedido,
+  items: ItemNuevoPedido[],
+  ventaId?: string,
+): Promise<string> {
   const { data, error } = await supabase.rpc('crear_pedido', {
     p_cliente_nombre: datos.clienteNombre,
     p_cliente_contacto: datos.clienteContacto,
@@ -156,6 +166,9 @@ export async function crearPedido(datos: DatosNuevoPedido, items: ItemNuevoPedid
     p_direccion_region: datos.direccionRegion,
     p_direccion_referencia: datos.direccionReferencia,
     p_items: items,
+    /* Solo se envía si hay venta: así el frontend funciona igual antes y
+       después de aplicar la migración. */
+    ...(ventaId ? { p_venta_id: ventaId } : {}),
   })
 
   if (error) throw new Error(error.message)

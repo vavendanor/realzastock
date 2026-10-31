@@ -58,6 +58,8 @@ export interface PedidoItem {
   color: string
   material: string
   cantidad: number
+  /* Si el pedido nace de una venta, el precio al que se vendió; si no, el
+     del catálogo actual. */
   precio: number
 }
 
@@ -75,6 +77,9 @@ export interface Pedido {
   clienteNombre: string
   clienteContacto: string | null
   direccion: DireccionDespacho
+  /* Venta de la que nació el pedido. Si existe, el stock ya se descontó al
+     vender y despachar no lo vuelve a descontar. */
+  ventaId: string | null
   estado: EstadoPedido
   fechaCreacion: string
   fechaActualizacion: string

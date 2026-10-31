@@ -65,7 +65,12 @@ export function PedidoDetalle() {
     setError(null)
     setAvanzando(true)
     try {
-      await avanzarEstadoPedido(pedido.id, siguiente === 'despachado' ? ubicacionDespacho : undefined)
+      /* Con venta no se pide ubicación: el stock ya se descontó al vender y
+         el servidor no vuelve a descontarlo al despachar. */
+      await avanzarEstadoPedido(
+        pedido.id,
+        siguiente === 'despachado' && !pedido.ventaId ? ubicacionDespacho : undefined,
+      )
       await cargar()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo actualizar el estado')
@@ -133,6 +138,23 @@ export function PedidoDetalle() {
         })}
       </div>
 
+      {pedido.ventaId && (
+        <p
+          style={{
+            font: 'var(--type-caption)',
+            color: 'var(--text-body)',
+            background: 'var(--arena-100)',
+            border: '1px solid var(--border-hairline)',
+            borderRadius: 'var(--radius-sm)',
+            padding: 'var(--space-3)',
+            marginBottom: 'var(--space-4)',
+          }}
+        >
+          Este pedido nace de una venta: el stock ya se descontó al venderla, así que despacharlo no lo descuenta de
+          nuevo. Los precios son los de la venta.
+        </p>
+      )}
+
       {!puedeAvanzar && (
         <p style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>
           Solo administración y bodega pueden cambiar el estado de un pedido.
@@ -154,7 +176,7 @@ export function PedidoDetalle() {
             borderTop: '1px solid var(--border-hairline)',
           }}
         >
-          {siguiente === 'despachado' && (
+          {siguiente === 'despachado' && !pedido.ventaId && (
             <Select
               label="Despachar desde"
               size={esEscritorio ? 'md' : 'touch'}
@@ -218,7 +240,9 @@ export function PedidoDetalle() {
             borderTop: '1px solid var(--border-hairline)',
           }}
         >
-          <span style={{ font: 'var(--type-label)', color: 'var(--text-strong)' }}>Total del pedido</span>
+          <span style={{ font: 'var(--type-label)', color: 'var(--text-strong)' }}>
+            {pedido.ventaId ? 'Total de la venta' : 'Total del pedido'}
+          </span>
           <span className="rh-num" style={{ font: 'var(--fw-medium) 22px/1 var(--font-display)', color: 'var(--text-strong)' }}>
             {clp(pedido.total)}
           </span>

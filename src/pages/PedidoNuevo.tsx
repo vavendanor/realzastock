@@ -8,11 +8,13 @@ import { Card } from '../components/ui/Card'
 import { IconButton } from '../components/ui/IconButton'
 import { Input } from '../components/ui/Input'
 import { Select } from '../components/ui/Select'
+import { useAuth } from '../hooks/useAuth'
 import { useEsEscritorio } from '../hooks/useMediaQuery'
 import { clp } from '../lib/format'
 import { listarVariantes } from '../lib/inventario'
 import { crearPedido } from '../lib/pedidos'
-import type { ProductoVariante } from '../types'
+import { listarVentasSinPedido } from '../lib/ventas'
+import type { ProductoVariante, Venta } from '../types'
 
 interface Linea {
   key: number
@@ -22,11 +24,29 @@ interface Linea {
 
 let siguienteKey = 1
 
+function etiquetaVenta(venta: Venta, incluirVendedor: boolean) {
+  const fecha = new Date(venta.fecha).toLocaleString('es-CL', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+  const primero = venta.items[0]
+  const resto = venta.items.length - 1
+  const productos = primero
+    ? `${primero.cantidad} × ${primero.modelo}${resto > 0 ? ` +${resto} más` : ''}`
+    : 'sin productos'
+  return `${fecha} · ${productos} · ${clp(venta.total)}${incluirVendedor ? ` · ${venta.vendedorNombre}` : ''}`
+}
+
 export function PedidoNuevo() {
   const navigate = useNavigate()
   const esEscritorio = useEsEscritorio()
+  const { rol } = useAuth()
 
   const [variantes, setVariantes] = useState<ProductoVariante[]>([])
+  const [ventasDisponibles, setVentasDisponibles] = useState<Venta[]>([])
+  const [ventaId, setVentaId] = useState('')
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [guardando, setGuardando] = useState(false)
@@ -45,8 +65,14 @@ export function PedidoNuevo() {
       setCargando(true)
       setError(null)
       try {
-        const datos = await listarVariantes()
+        const [datos, ventas] = await Promise.all([
+          listarVariantes(),
+          /* Si esta consulta falla, el pedido a mano sigue funcionando: el
+             selector de ventas es una ayuda, no un requisito. */
+          listarVentasSinPedido().catch(() => [] as Venta[]),
+        ])
         setVariantes(datos)
+        setVentasDisponibles(ventas)
         if (datos.length > 0) setLineas([{ key: siguienteKey++, varianteId: datos[0].id, cantidad: 1 }])
       } catch (err) {
         setError(err instanceof Error ? err.message : 'No se pudo cargar el catálogo')
@@ -69,18 +95,27 @@ export function PedidoNuevo() {
   const actualizarLinea = (key: number, cambios: Partial<Linea>) =>
     setLineas((previas) => previas.map((l) => (l.key === key ? { ...l, ...cambios } : l)))
 
-  /* Chequeo informativo en el cliente: la validación real (la que no se
-     puede evadir) ocurre en la función crear_pedido del servidor. */
-  const excesos = lineas.filter((linea) => {
-    const variante = variantePorId.get(linea.varianteId)
-    if (!variante) return false
-    return linea.cantidad > variante.stockBodega + variante.stockShowroom
-  })
+  const venta = ventasDisponibles.find((v) => v.id === ventaId) ?? null
 
-  const total = lineas.reduce((suma, linea) => {
-    const variante = variantePorId.get(linea.varianteId)
-    return suma + (variante ? variante.precio * linea.cantidad : 0)
-  }, 0)
+  /* Chequeo informativo en el cliente: la validación real (la que no se
+     puede evadir) ocurre en la función crear_pedido del servidor. Con una
+     venta elegida no aplica: el stock ya se descontó al vender. */
+  const excesos = venta
+    ? []
+    : lineas.filter((linea) => {
+        const variante = variantePorId.get(linea.varianteId)
+        if (!variante) return false
+        return linea.cantidad > variante.stockBodega + variante.stockShowroom
+      })
+
+  /* Con venta, el total es el de la venta (precio al que se vendió); sin
+     venta, es una estimación con el precio actual del catálogo. */
+  const total = venta
+    ? venta.total
+    : lineas.reduce((suma, linea) => {
+        const variante = variantePorId.get(linea.varianteId)
+        return suma + (variante ? variante.precio * linea.cantidad : 0)
+      }, 0)
 
   const puedeConfirmar =
     !cargando &&
@@ -90,7 +125,7 @@ export function PedidoNuevo() {
     direccionComuna.trim() !== '' &&
     direccionCiudad.trim() !== '' &&
     direccionRegion.trim() !== '' &&
-    lineas.length > 0 &&
+    (venta !== null || lineas.length > 0) &&
     excesos.length === 0
 
   const confirmar = async () => {
@@ -107,7 +142,9 @@ export function PedidoNuevo() {
           direccionRegion,
           direccionReferencia,
         },
-        lineas.map((l) => ({ variante_id: l.varianteId, cantidad: l.cantidad })),
+        /* Con venta, los productos los copia el servidor desde la venta. */
+        venta ? [] : lineas.map((l) => ({ variante_id: l.varianteId, cantidad: l.cantidad })),
+        venta?.id,
       )
       navigate('/pedidos')
     } catch (err) {
@@ -157,6 +194,29 @@ export function PedidoNuevo() {
           }}
         >
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
+            {ventasDisponibles.length > 0 && (
+              <Card title="Origen del pedido" subtitle="Ventas de los últimos 30 días que aún no tienen pedido">
+                <Select
+                  label="Basar en una venta"
+                  size={esEscritorio ? 'md' : 'touch'}
+                  value={ventaId}
+                  onChange={(e) => setVentaId(e.target.value)}
+                  options={[
+                    { value: '', label: 'Ninguna: armar el pedido a mano' },
+                    ...ventasDisponibles.map((v) => ({
+                      value: v.id,
+                      label: etiquetaVenta(v, rol === 'administrador'),
+                    })),
+                  ]}
+                  hint={
+                    venta
+                      ? 'Los productos y cantidades salen de la venta, y el stock ya se descontó al venderla.'
+                      : undefined
+                  }
+                />
+              </Card>
+            )}
+
             <Card title="Cliente">
               <div style={{ display: 'grid', gridTemplateColumns: esEscritorio ? '1fr 1fr' : '1fr', gap: 'var(--space-4)' }}>
                 <Input
@@ -222,6 +282,38 @@ export function PedidoNuevo() {
               </div>
             </Card>
 
+            {venta && (
+              <Card title="Productos" subtitle="Tomados de la venta; no se pueden modificar acá">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+                  {venta.items.map((item, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        gap: 'var(--space-3)',
+                        paddingBottom: 'var(--space-3)',
+                        borderBottom: i < venta.items.length - 1 ? '1px solid var(--border-hairline)' : 'none',
+                      }}
+                    >
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ font: 'var(--type-body-strong)', color: 'var(--text-strong)' }}>
+                          {item.cantidad} × {item.modelo} · {item.color}
+                        </div>
+                        <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>
+                          {item.material} · {item.sku}
+                        </div>
+                      </div>
+                      <span className="rh-num" style={{ font: 'var(--type-numeric)', color: 'var(--text-strong)' }}>
+                        {clp(item.cantidad * item.precioUnitario)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            )}
+
+            {!venta && (
             <Card
               title="Productos"
               actions={
@@ -281,24 +373,36 @@ export function PedidoNuevo() {
                 })}
               </div>
             </Card>
+            )}
           </div>
 
           <Card title="Resumen">
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-              {lineas.map((linea) => {
-                const variante = variantePorId.get(linea.varianteId)
-                if (!variante) return null
-                return (
-                  <div key={linea.key} style={{ display: 'flex', justifyContent: 'space-between', font: 'var(--type-body)' }}>
-                    <span style={{ color: 'var(--text-muted)' }}>
-                      {linea.cantidad} × {variante.modelo}
-                    </span>
-                    <span className="rh-num" style={{ color: 'var(--text-strong)' }}>
-                      {clp(variante.precio * linea.cantidad)}
-                    </span>
-                  </div>
-                )
-              })}
+              {venta
+                ? venta.items.map((item, i) => (
+                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', font: 'var(--type-body)' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>
+                        {item.cantidad} × {item.modelo}
+                      </span>
+                      <span className="rh-num" style={{ color: 'var(--text-strong)' }}>
+                        {clp(item.cantidad * item.precioUnitario)}
+                      </span>
+                    </div>
+                  ))
+                : lineas.map((linea) => {
+                    const variante = variantePorId.get(linea.varianteId)
+                    if (!variante) return null
+                    return (
+                      <div key={linea.key} style={{ display: 'flex', justifyContent: 'space-between', font: 'var(--type-body)' }}>
+                        <span style={{ color: 'var(--text-muted)' }}>
+                          {linea.cantidad} × {variante.modelo}
+                        </span>
+                        <span className="rh-num" style={{ color: 'var(--text-strong)' }}>
+                          {clp(variante.precio * linea.cantidad)}
+                        </span>
+                      </div>
+                    )
+                  })}
 
               <div
                 style={{
@@ -309,7 +413,9 @@ export function PedidoNuevo() {
                   alignItems: 'baseline',
                 }}
               >
-                <span style={{ font: 'var(--type-label)', color: 'var(--text-strong)' }}>Total estimado</span>
+                <span style={{ font: 'var(--type-label)', color: 'var(--text-strong)' }}>
+                  {venta ? 'Total de la venta' : 'Total estimado'}
+                </span>
                 <span className="rh-num" style={{ font: 'var(--fw-medium) 28px/1 var(--font-display)', color: 'var(--text-strong)' }}>
                   {clp(total)}
                 </span>
@@ -327,8 +433,9 @@ export function PedidoNuevo() {
               </Button>
 
               <p style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>
-                El pedido queda como "pendiente" y no descuenta stock todavía — eso ocurre recién cuando bodega lo
-                despacha.
+                {venta
+                  ? 'El pedido queda como "pendiente". El stock ya se descontó al registrar la venta, así que despacharlo no lo descuenta de nuevo.'
+                  : 'El pedido queda como "pendiente" y no descuenta stock todavía — eso ocurre recién cuando bodega lo despacha.'}
               </p>
             </div>
           </Card>
