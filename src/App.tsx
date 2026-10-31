@@ -7,6 +7,7 @@ import { Login } from './pages/Login'
 import { PedidoDetalle } from './pages/PedidoDetalle'
 import { PedidoNuevo } from './pages/PedidoNuevo'
 import { Pedidos } from './pages/Pedidos'
+import { Probador } from './pages/Probador'
 import { UsuarioNuevo } from './pages/UsuarioNuevo'
 import { Usuarios } from './pages/Usuarios'
 import { Ventas } from './pages/Ventas'
@@ -92,6 +93,15 @@ function App() {
         element={
           <ProtectedRoute roles={['administrador', 'bodega', 'vendedor']}>
             <PedidoDetalle />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/probador"
+        element={
+          <ProtectedRoute roles={['administrador', 'bodega']}>
+            <Probador />
           </ProtectedRoute>
         }
       />

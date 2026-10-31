@@ -35,6 +35,25 @@ export default defineConfig({
          `npm run dev` -- se activa acá para poder probar el botón de
          instalar sin tener que hacer build cada vez. */
       devOptions: { enabled: true },
+      workbox: {
+        runtimeCaching: [
+          {
+            /* Fotos y siluetas del Probador de colores (~0,8 MB). No van en el
+               precache general porque solo las usan administración y bodega:
+               se descargan al abrir el probador y quedan guardadas para usarlo
+               sin conexión. Si se reemplaza una foto, conviene cambiarle el
+               nombre; si no, el teléfono puede seguir mostrando la anterior
+               hasta 30 días. */
+            urlPattern: /\/probador\/.+\.(?:webp|png)$/,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'probador-imagenes',
+              expiration: { maxEntries: 8, maxAgeSeconds: 60 * 60 * 24 * 30 },
+              cacheableResponse: { statuses: [200] },
+            },
+          },
+        ],
+      },
       manifest: {
         name: 'Realza Hogar - Gestión',
         short_name: 'Realza Hogar',

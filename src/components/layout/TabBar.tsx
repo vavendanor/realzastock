@@ -42,7 +42,7 @@ export function TabBar() {
               <>
                 <Icono size={22} strokeWidth={isActive ? 2.1 : 1.7} />
                 <span style={{ font: `var(--fw-${isActive ? 'bold' : 'medium'}) 11px/1 var(--font-sans)` }}>
-                  {item.label}
+                  {item.etiquetaCorta ?? item.label}
                 </span>
               </>
             )}

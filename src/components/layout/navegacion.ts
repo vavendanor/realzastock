@@ -1,9 +1,12 @@
-import { LayoutDashboard, Package, Receipt, Truck, Users, type LucideIcon } from 'lucide-react'
+import { LayoutDashboard, Package, Palette, Receipt, Truck, Users, type LucideIcon } from 'lucide-react'
 import type { UserRole } from '../../types'
 
 export interface NavItem {
   id: string
   label: string
+  /* Nombre más corto para la barra inferior del celular, donde las etiquetas
+     largas no caben. Si falta, se usa `label`. */
+  etiquetaCorta?: string
   icon: LucideIcon
   /* Sin `to`, el módulo todavía no existe: se muestra inerte para conservar
      la estructura del panel del diseño. */
@@ -17,6 +20,14 @@ const NAV: NavItem[] = [
   { id: 'inventario', label: 'Inventario', icon: Package, to: '/inventario', roles: ['administrador'] },
   { id: 'ventas', label: 'Ventas', icon: Receipt, to: '/ventas', roles: ['administrador', 'vendedor'] },
   { id: 'pedidos', label: 'Pedidos', icon: Truck, to: '/pedidos', roles: ['administrador', 'bodega', 'vendedor'] },
+  {
+    id: 'probador',
+    label: 'Probador de colores',
+    etiquetaCorta: 'Probador',
+    icon: Palette,
+    to: '/probador',
+    roles: ['administrador', 'bodega'],
+  },
   { id: 'usuarios', label: 'Usuarios', icon: Users, to: '/usuarios', roles: ['administrador'] },
 ]
 
