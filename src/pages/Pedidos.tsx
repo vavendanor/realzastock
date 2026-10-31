@@ -9,7 +9,7 @@ import { EstadoBadge } from '../components/ui/EstadoBadge'
 import { Select } from '../components/ui/Select'
 import { useAuth } from '../hooks/useAuth'
 import { useEsEscritorio } from '../hooks/useMediaQuery'
-import { clp } from '../lib/format'
+import { clp, formatearTelefono } from '../lib/format'
 import { ESTADO_LABEL, listarPedidos, ORDEN_ESTADOS } from '../lib/pedidos'
 import type { EstadoPedido, Pedido } from '../types'
 
@@ -66,7 +66,7 @@ export function Pedidos() {
         <div>
           <div style={{ font: 'var(--type-body-strong)', color: 'var(--text-strong)' }}>{r.clienteNombre}</div>
           {r.clienteContacto && (
-            <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{r.clienteContacto}</div>
+            <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{formatearTelefono(r.clienteContacto)}</div>
           )}
         </div>
       ),

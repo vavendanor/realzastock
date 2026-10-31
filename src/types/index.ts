@@ -63,11 +63,13 @@ export interface PedidoItem {
   precio: number
 }
 
-/* Las 4 primeras son obligatorias en la BD; la referencia es opcional. */
+/* Calle, comuna y región son obligatorias; la referencia es opcional. */
 export interface DireccionDespacho {
   calle: string
   comuna: string
-  ciudad: string
+  /* Ya no se pide en el formulario (región y comuna salen de listas), pero
+     los pedidos anteriores la conservan. */
+  ciudad: string | null
   region: string
   referencia: string | null
 }

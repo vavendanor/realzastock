@@ -25,7 +25,8 @@ export const ORDEN_ESTADOS: EstadoPedido[] = ['pendiente', 'en_preparacion', 'de
    entre paréntesis al final porque es una aclaración, no parte de la
    dirección postal en sí. */
 export function formatearDireccion(direccion: DireccionDespacho) {
-  const base = `${direccion.calle}, ${direccion.comuna}, ${direccion.ciudad}, ${direccion.region}`
+  /* La ciudad solo existe en pedidos anteriores al cambio del formulario. */
+  const base = [direccion.calle, direccion.comuna, direccion.ciudad, direccion.region].filter(Boolean).join(', ')
   return direccion.referencia ? `${base} (${direccion.referencia})` : base
 }
 
@@ -35,7 +36,7 @@ interface PedidoRaw {
   cliente_contacto: string | null
   direccion_calle: string
   direccion_comuna: string
-  direccion_ciudad: string
+  direccion_ciudad: string | null
   direccion_region: string
   direccion_referencia: string | null
   venta_id: string | null
@@ -136,18 +137,17 @@ export interface ItemNuevoPedido {
   cantidad: number
 }
 
-/* Los 4 primeros campos son obligatorios; `referencia` es opcional. */
+/* `clienteContacto` (9 dígitos) y `direccionReferencia` son opcionales. */
 export interface DatosNuevoPedido {
   clienteNombre: string
   clienteContacto: string
   direccionCalle: string
   direccionComuna: string
-  direccionCiudad: string
   direccionRegion: string
   direccionReferencia: string
 }
 
-/* Llama a la función plpgsql de la migración 0008: crea la cabecera (con
+/* Llama a la función plpgsql de la migración 0009: crea la cabecera (con
    la dirección de despacho) y las líneas dentro de una sola transacción.
    - Sin `ventaId`: valida stock combinado (bodega + showroom) sin descontarlo.
    - Con `ventaId`: los productos se copian de la venta en el servidor (se
@@ -162,7 +162,6 @@ export async function crearPedido(
     p_cliente_contacto: datos.clienteContacto,
     p_direccion_calle: datos.direccionCalle,
     p_direccion_comuna: datos.direccionComuna,
-    p_direccion_ciudad: datos.direccionCiudad,
     p_direccion_region: datos.direccionRegion,
     p_direccion_referencia: datos.direccionReferencia,
     p_items: items,

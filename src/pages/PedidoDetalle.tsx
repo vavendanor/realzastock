@@ -9,7 +9,7 @@ import { EstadoBadge } from '../components/ui/EstadoBadge'
 import { Select } from '../components/ui/Select'
 import { useAuth } from '../hooks/useAuth'
 import { useEsEscritorio } from '../hooks/useMediaQuery'
-import { clp } from '../lib/format'
+import { clp, formatearTelefono } from '../lib/format'
 import { avanzarEstadoPedido, ESTADO_LABEL, ESTADO_SIGUIENTE, obtenerPedido, ORDEN_ESTADOS } from '../lib/pedidos'
 import type { Pedido, UbicacionStock } from '../types'
 
@@ -260,12 +260,13 @@ export function PedidoDetalle() {
         </div>
         {pedido.clienteContacto && (
           <div style={{ display: 'flex', gap: 'var(--space-3)', font: 'var(--type-body)', color: 'var(--text-body)' }}>
+            {/* Pedidos anteriores al cambio podían traer un correo como contacto. */}
             {pedido.clienteContacto.includes('@') ? (
               <Mail size={16} color="var(--text-faint)" />
             ) : (
               <Phone size={16} color="var(--text-faint)" />
             )}
-            <span>{pedido.clienteContacto}</span>
+            <span>{formatearTelefono(pedido.clienteContacto)}</span>
           </div>
         )}
         <div style={{ display: 'flex', gap: 'var(--space-3)', font: 'var(--type-body)', color: 'var(--text-muted)' }}>
@@ -282,8 +283,10 @@ export function PedidoDetalle() {
         <MapPin size={16} color="var(--text-faint)" style={{ flex: '0 0 auto', marginTop: 2 }} />
         <div style={{ font: 'var(--type-body)', color: 'var(--text-body)' }}>
           <div>{pedido.direccion.calle}</div>
+          {/* La ciudad ya no se pide; solo la tienen los pedidos anteriores. */}
           <div>
-            {pedido.direccion.comuna}, {pedido.direccion.ciudad}
+            {pedido.direccion.comuna}
+            {pedido.direccion.ciudad ? `, ${pedido.direccion.ciudad}` : ''}
           </div>
           <div>{pedido.direccion.region}</div>
         </div>

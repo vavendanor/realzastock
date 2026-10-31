@@ -10,7 +10,8 @@ import { Input } from '../components/ui/Input'
 import { Select } from '../components/ui/Select'
 import { useAuth } from '../hooks/useAuth'
 import { useEsEscritorio } from '../hooks/useMediaQuery'
-import { clp } from '../lib/format'
+import { comunasDeRegion, REGIONES } from '../lib/chile'
+import { clp, normalizarTelefono, telefonoValido } from '../lib/format'
 import { listarVariantes } from '../lib/inventario'
 import { crearPedido } from '../lib/pedidos'
 import { listarVentasSinPedido } from '../lib/ventas'
@@ -53,10 +54,10 @@ export function PedidoNuevo() {
 
   const [clienteNombre, setClienteNombre] = useState('')
   const [clienteContacto, setClienteContacto] = useState('')
+  const [contactoTocado, setContactoTocado] = useState(false)
   const [direccionCalle, setDireccionCalle] = useState('')
-  const [direccionComuna, setDireccionComuna] = useState('')
-  const [direccionCiudad, setDireccionCiudad] = useState('')
   const [direccionRegion, setDireccionRegion] = useState('')
+  const [direccionComuna, setDireccionComuna] = useState('')
   const [direccionReferencia, setDireccionReferencia] = useState('')
   const [lineas, setLineas] = useState<Linea[]>([])
 
@@ -97,6 +98,23 @@ export function PedidoNuevo() {
 
   const venta = ventasDisponibles.find((v) => v.id === ventaId) ?? null
 
+  const comunas = useMemo(() => comunasDeRegion(direccionRegion), [direccionRegion])
+
+  /* El teléfono es opcional, pero si se escribe tiene que ser válido. El
+     error no aparece mientras se tipea (marcaría "9" como inválido apenas
+     se empieza): solo al salir del campo o al completar los 9 dígitos. */
+  const contactoInvalido = clienteContacto !== '' && !telefonoValido(clienteContacto)
+  const errorContacto =
+    contactoInvalido && (contactoTocado || clienteContacto.length === 9)
+      ? 'Ingresa 9 dígitos y que parta con 9 (ej: 912345678).'
+      : undefined
+
+  const cambiarRegion = (region: string) => {
+    setDireccionRegion(region)
+    /* La comuna elegida pertenecía a la región anterior. */
+    setDireccionComuna('')
+  }
+
   /* Chequeo informativo en el cliente: la validación real (la que no se
      puede evadir) ocurre en la función crear_pedido del servidor. Con una
      venta elegida no aplica: el stock ya se descontó al vender. */
@@ -121,10 +139,10 @@ export function PedidoNuevo() {
     !cargando &&
     !guardando &&
     clienteNombre.trim() !== '' &&
+    !contactoInvalido &&
     direccionCalle.trim() !== '' &&
-    direccionComuna.trim() !== '' &&
-    direccionCiudad.trim() !== '' &&
-    direccionRegion.trim() !== '' &&
+    direccionRegion !== '' &&
+    direccionComuna !== '' &&
     (venta !== null || lineas.length > 0) &&
     excesos.length === 0
 
@@ -138,7 +156,6 @@ export function PedidoNuevo() {
           clienteContacto,
           direccionCalle,
           direccionComuna,
-          direccionCiudad,
           direccionRegion,
           direccionReferencia,
         },
@@ -228,11 +245,19 @@ export function PedidoNuevo() {
                   placeholder="Nombre y apellido"
                 />
                 <Input
-                  label="Contacto (opcional)"
+                  label="Teléfono (opcional)"
+                  type="tel"
+                  inputMode="numeric"
+                  autoComplete="tel-national"
+                  maxLength={9}
                   size={esEscritorio ? 'md' : 'touch'}
+                  iconLeft={<span style={{ font: 'var(--type-body)', color: 'var(--text-muted)' }}>+56</span>}
                   value={clienteContacto}
-                  onChange={(e) => setClienteContacto(e.target.value)}
-                  placeholder="Teléfono o correo"
+                  onChange={(e) => setClienteContacto(normalizarTelefono(e.target.value))}
+                  onBlur={() => setContactoTocado(true)}
+                  placeholder="912345678"
+                  error={errorContacto}
+                  hint={errorContacto ? undefined : 'Celular de 9 dígitos, parte con 9.'}
                 />
               </div>
             </Card>
@@ -248,29 +273,26 @@ export function PedidoNuevo() {
                   placeholder="Av. Los Leones 1420, dpto 703"
                   wrapperStyle={esEscritorio ? { gridColumn: 'span 2' } : undefined}
                 />
-                <Input
+                <Select
+                  label="Región"
+                  size={esEscritorio ? 'md' : 'touch'}
+                  value={direccionRegion}
+                  onChange={(e) => cambiarRegion(e.target.value)}
+                  options={[
+                    { value: '', label: 'Selecciona una región' },
+                    ...REGIONES.map((r) => ({ value: r.nombre, label: r.nombre })),
+                  ]}
+                />
+                <Select
                   label="Comuna"
-                  required
                   size={esEscritorio ? 'md' : 'touch'}
                   value={direccionComuna}
                   onChange={(e) => setDireccionComuna(e.target.value)}
-                  placeholder="Providencia"
-                />
-                <Input
-                  label="Ciudad"
-                  required
-                  size={esEscritorio ? 'md' : 'touch'}
-                  value={direccionCiudad}
-                  onChange={(e) => setDireccionCiudad(e.target.value)}
-                  placeholder="Santiago"
-                />
-                <Input
-                  label="Región"
-                  required
-                  size={esEscritorio ? 'md' : 'touch'}
-                  value={direccionRegion}
-                  onChange={(e) => setDireccionRegion(e.target.value)}
-                  placeholder="Metropolitana"
+                  disabled={!direccionRegion}
+                  options={[
+                    { value: '', label: direccionRegion ? 'Selecciona una comuna' : 'Primero elige una región' },
+                    ...comunas.map((c) => ({ value: c, label: c })),
+                  ]}
                 />
                 <Input
                   label="Referencia (opcional)"
@@ -278,6 +300,7 @@ export function PedidoNuevo() {
                   value={direccionReferencia}
                   onChange={(e) => setDireccionReferencia(e.target.value)}
                   placeholder="Edificio sin ascensor de carga"
+                  wrapperStyle={esEscritorio ? { gridColumn: 'span 2' } : undefined}
                 />
               </div>
             </Card>
