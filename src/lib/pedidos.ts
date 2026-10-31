@@ -43,6 +43,8 @@ interface PedidoRaw {
   estado: EstadoPedido
   fecha_creacion: string
   fecha_actualizacion: string
+  despachado_en: string | null
+  despachado_desde: UbicacionStock | null
   responsable_id: string
   usuarios: { nombre: string; email: string } | null
   pedido_items: {
@@ -89,6 +91,8 @@ function aplanar(raw: PedidoRaw): Pedido {
     estado: raw.estado,
     fechaCreacion: raw.fecha_creacion,
     fechaActualizacion: raw.fecha_actualizacion,
+    despachadoEn: raw.despachado_en,
+    despachadoDesde: raw.despachado_desde,
     responsableId: raw.responsable_id,
     responsableNombre: raw.usuarios?.nombre ?? raw.usuarios?.email ?? '—',
     items,
@@ -100,7 +104,7 @@ function aplanar(raw: PedidoRaw): Pedido {
 const SELECT_PEDIDO = `
   id, cliente_nombre, cliente_contacto,
   direccion_calle, direccion_comuna, direccion_ciudad, direccion_region, direccion_referencia,
-  venta_id, estado, fecha_creacion, fecha_actualizacion, responsable_id,
+  venta_id, estado, fecha_creacion, fecha_actualizacion, despachado_en, despachado_desde, responsable_id,
   usuarios ( nombre, email ),
   pedido_items (
     cantidad, precio_unitario,

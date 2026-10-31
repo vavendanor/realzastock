@@ -43,6 +43,20 @@ export function formatearTelefono(valor: string) {
   return TELEFONO_CHILE.test(valor) ? `+56 9 ${valor.slice(1, 5)} ${valor.slice(5)}` : valor
 }
 
+/* "05-11-2026 14:32": hora local del navegador, en formato de 24 horas. */
+export function formatearFechaHora(iso: string) {
+  return new Date(iso)
+    .toLocaleString('es-CL', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    })
+    .replace(', ', ' ')
+}
+
 /* Fechas en formato 'YYYY-MM-DD', el que esperan los filtros de fecha de
    Supabase y los <input type="date">. */
 export function hoy() {

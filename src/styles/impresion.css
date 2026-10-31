@@ -1,0 +1,225 @@
+/* ============================================================
+   Comprobante de despacho (hoja carta)
+   ------------------------------------------------------------
+   El comprobante vive fuera de #root (se monta en <body> con un portal),
+   oculto en pantalla. Al imprimir ocurre lo contrario: se oculta la app
+   entera y solo se ve el comprobante. Así no depende del layout de la
+   app (sidebar, scroll interno, alto 100svh) y no se corta.
+   Sin fondos de color: sale bien en blanco y negro y ahorra tinta.
+   ============================================================ */
+
+.comprobante-impresion {
+  display: none;
+}
+
+@media print {
+  @page {
+    size: letter portrait;
+    margin: 14mm;
+  }
+
+  html,
+  body {
+    background: #fff !important;
+    height: auto !important;
+    min-height: 0 !important;
+  }
+
+  #root {
+    display: none !important;
+  }
+
+  .comprobante-impresion {
+    display: block;
+    color: #1a1512;
+    font-family: 'Manrope', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    font-size: 10.5pt;
+    line-height: 1.4;
+  }
+
+  .cp-encabezado {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8mm;
+    padding-bottom: 5mm;
+    border-bottom: 0.6mm solid #1a1512;
+  }
+
+  .cp-marca {
+    display: flex;
+    align-items: center;
+    gap: 3mm;
+  }
+
+  .cp-logo {
+    width: 18mm;
+    height: 18mm;
+  }
+
+  .cp-marca-nombre {
+    font-size: 15pt;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+  }
+
+  .cp-titulo-bloque {
+    text-align: right;
+  }
+
+  .cp-titulo {
+    font-size: 17pt;
+    font-weight: 800;
+    line-height: 1.15;
+  }
+
+  .cp-numero {
+    margin-top: 1mm;
+    font-size: 12pt;
+    font-weight: 600;
+  }
+
+  .cp-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 5mm 8mm;
+    margin-top: 6mm;
+  }
+
+  .cp-ancho {
+    grid-column: 1 / -1;
+  }
+
+  .cp-etiqueta {
+    font-size: 8pt;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #5c5048;
+  }
+
+  .cp-valor {
+    margin-top: 0.8mm;
+    font-size: 11pt;
+  }
+
+  .cp-valor-fuerte {
+    font-weight: 700;
+  }
+
+  .cp-nota {
+    margin-top: 1mm;
+    font-size: 9pt;
+    color: #5c5048;
+  }
+
+  .cp-linea-manual {
+    display: inline-block;
+    min-width: 45mm;
+    border-bottom: 0.3mm solid #1a1512;
+    height: 5.5mm;
+    vertical-align: bottom;
+  }
+
+  .cp-opciones {
+    display: flex;
+    gap: 8mm;
+    margin-top: 1.5mm;
+  }
+
+  .cp-opcion {
+    display: inline-flex;
+    align-items: center;
+    gap: 2mm;
+    font-size: 11pt;
+  }
+
+  .cp-casilla {
+    display: inline-block;
+    width: 4.5mm;
+    height: 4.5mm;
+    border: 0.35mm solid #1a1512;
+  }
+
+  .cp-seccion {
+    margin-top: 8mm;
+    margin-bottom: 2mm;
+    font-size: 9pt;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  .cp-tabla {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  .cp-tabla th {
+    padding: 2mm 2mm;
+    border-top: 0.3mm solid #1a1512;
+    border-bottom: 0.3mm solid #1a1512;
+    font-size: 8.5pt;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-align: left;
+    text-transform: uppercase;
+    background: none;
+  }
+
+  .cp-tabla td {
+    padding: 2.4mm 2mm;
+    border-bottom: 0.2mm solid #b8aca2;
+    vertical-align: top;
+    font-size: 10.5pt;
+  }
+
+  .cp-tabla tr {
+    break-inside: avoid;
+  }
+
+  .cp-tabla .cp-derecha {
+    text-align: right;
+  }
+
+  /* Un SKU partido en dos líneas se lee mal y se puede confundir al
+     buscarlo en bodega: la columna se ensancha en vez de cortarlo. */
+  .cp-sku {
+    font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace;
+    font-size: 9.5pt;
+    white-space: nowrap;
+  }
+
+  .cp-total td {
+    border-bottom: 0.3mm solid #1a1512;
+    font-weight: 700;
+  }
+
+  .cp-firmas {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10mm;
+    margin-top: 16mm;
+    break-inside: avoid;
+  }
+
+  .cp-firma {
+    padding-top: 1.5mm;
+    border-top: 0.3mm solid #1a1512;
+    font-size: 9pt;
+    color: #5c5048;
+  }
+
+  .cp-firma-espacio {
+    height: 18mm;
+  }
+
+  .cp-pie {
+    margin-top: 10mm;
+    padding-top: 3mm;
+    border-top: 0.2mm solid #b8aca2;
+    font-size: 8pt;
+    color: #5c5048;
+    break-inside: avoid;
+  }
+}

@@ -1,6 +1,8 @@
-import { ArrowLeft, ArrowRight, Check, ClipboardList, Mail, MapPin, Phone, User } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Check, ClipboardList, FileDown, Mail, MapPin, Phone, User } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
+import { flushSync } from 'react-dom'
 import { useNavigate, useParams } from 'react-router-dom'
+import { ComprobanteDespacho } from '../components/ComprobanteDespacho'
 import { Shell } from '../components/layout/Shell'
 import { Breadcrumb } from '../components/ui/Breadcrumb'
 import { Button } from '../components/ui/Button'
@@ -9,6 +11,7 @@ import { EstadoBadge } from '../components/ui/EstadoBadge'
 import { Select } from '../components/ui/Select'
 import { useAuth } from '../hooks/useAuth'
 import { useEsEscritorio } from '../hooks/useMediaQuery'
+import { imprimirConTitulo } from '../lib/comprobante'
 import { clp, formatearTelefono } from '../lib/format'
 import { avanzarEstadoPedido, ESTADO_LABEL, ESTADO_SIGUIENTE, obtenerPedido, ORDEN_ESTADOS } from '../lib/pedidos'
 import type { Pedido, UbicacionStock } from '../types'
@@ -34,6 +37,7 @@ export function PedidoDetalle() {
 
   const [ubicacionDespacho, setUbicacionDespacho] = useState<UbicacionStock>('bodega')
   const [avanzando, setAvanzando] = useState(false)
+  const [emitidoEn, setEmitidoEn] = useState(() => new Date().toISOString())
 
   const cargar = useCallback(async () => {
     if (!id) return
@@ -103,6 +107,18 @@ export function PedidoDetalle() {
 
   const siguiente = ESTADO_SIGUIENTE[pedido.estado]
   const indiceActual = ORDEN_ESTADOS.indexOf(pedido.estado)
+
+  /* El comprobante es para bodega: lo ven administrador y bodega, y solo
+     cuando el pedido ya salió (despachado o entregado), también los antiguos. */
+  const puedeVerComprobante =
+    puedeAvanzar && (pedido.estado === 'despachado' || pedido.estado === 'entregado')
+
+  const descargarComprobante = () => {
+    /* flushSync: la hora de emisión tiene que estar pintada ANTES de abrir
+       el diálogo de impresión, y un setState normal se aplicaría después. */
+    flushSync(() => setEmitidoEn(new Date().toISOString()))
+    imprimirConTitulo(`Comprobante de despacho ${pedido.id.slice(0, 8).toUpperCase()}`)
+  }
 
   const pasos = (
     <Card title="Estado del pedido" subtitle={`Ingresado el ${formatearFecha(pedido.fechaCreacion)}`}>
@@ -278,7 +294,16 @@ export function PedidoDetalle() {
   )
 
   const despacho = (
-    <Card title="Despacho">
+    <Card
+      title="Despacho"
+      actions={
+        puedeVerComprobante ? (
+          <Button size="sm" variant="secondary" iconLeft={<FileDown size={15} />} onClick={descargarComprobante}>
+            Descargar comprobante
+          </Button>
+        ) : undefined
+      }
+    >
       <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
         <MapPin size={16} color="var(--text-faint)" style={{ flex: '0 0 auto', marginTop: 2 }} />
         <div style={{ font: 'var(--type-body)', color: 'var(--text-body)' }}>
@@ -355,6 +380,8 @@ export function PedidoDetalle() {
           {items}
         </div>
       )}
+
+      {puedeVerComprobante && <ComprobanteDespacho pedido={pedido} emitidoEn={emitidoEn} />}
     </Shell>
   )
 }

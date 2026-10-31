@@ -85,6 +85,11 @@ export interface Pedido {
   estado: EstadoPedido
   fechaCreacion: string
   fechaActualizacion: string
+  /* Cuándo y desde dónde se despachó. Solo existen en pedidos despachados
+     después de la migración 0010; los anteriores quedan en null. Con venta,
+     `despachadoDesde` también es null: al despachar no se movió stock. */
+  despachadoEn: string | null
+  despachadoDesde: UbicacionStock | null
   responsableId: string
   responsableNombre: string
   items: PedidoItem[]
