@@ -15,6 +15,8 @@ interface DataTableProps<T> {
   onRowClick?: (row: T) => void
   emptyLabel?: ReactNode
   style?: CSSProperties
+  /* Menos espacio entre columnas, para tablas con muchas (p. ej. producción). */
+  compacta?: boolean
 }
 
 export function DataTable<T extends { id?: string }>({
@@ -23,8 +25,10 @@ export function DataTable<T extends { id?: string }>({
   onRowClick,
   emptyLabel = 'Sin resultados',
   style,
+  compacta = false,
 }: DataTableProps<T>) {
   const [hoverRow, setHoverRow] = useState(-1)
+  const relleno = compacta ? 'var(--space-3) var(--space-3)' : 'var(--space-4) var(--space-5)'
 
   return (
     <div style={{ overflowX: 'auto', ...style }}>
@@ -36,7 +40,7 @@ export function DataTable<T extends { id?: string }>({
                 key={column.key}
                 style={{
                   textAlign: column.align ?? 'left',
-                  padding: 'var(--space-3) var(--space-5)',
+                  padding: compacta ? 'var(--space-3)' : 'var(--space-3) var(--space-5)',
                   background: 'var(--arena-100)',
                   borderBottom: '1px solid var(--border-default)',
                   font: 'var(--fw-bold) var(--text-eyebrow)/1.2 var(--font-sans)',
@@ -85,7 +89,7 @@ export function DataTable<T extends { id?: string }>({
                   key={column.key}
                   style={{
                     textAlign: column.align ?? 'left',
-                    padding: 'var(--space-4) var(--space-5)',
+                    padding: relleno,
                     borderBottom: '1px solid var(--border-hairline)',
                     font: 'var(--type-body)',
                     color: 'var(--text-body)',

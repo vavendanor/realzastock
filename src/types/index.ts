@@ -104,3 +104,50 @@ export interface Usuario {
   rol: UserRole
   creadoEn: string
 }
+
+/* ---- Producción (órdenes de fabricación que llegan de Shopify) ---- */
+
+export type EstadoOrden = 'por_fabricar' | 'fabricado' | 'en_despacho' | 'entregado'
+
+/* b, i, a, c: etapas de fabricación. listo: el mueble terminó. */
+export type Etapa = 'b' | 'i' | 'a' | 'c' | 'listo'
+
+/* Una orden = un mueble. Aquí NO hay datos personales del cliente: viven en
+   otra tabla (DatosClienteOrden) que solo se pide al abrir el detalle. */
+export interface OrdenFabricacion {
+  id: string
+  numero: string
+  pedidoNumero: string
+  shopifyOrderId: string
+  tipo: string | null
+  modelo: string | null
+  orientacion: string | null
+  cm: string | null
+  color: string | null
+  tela: string | null
+  region: string | null
+  comuna: string | null
+  comunaRevisar: boolean
+  patas: string
+  /* YYYY-MM-DD en hora de Chile. */
+  fechaPedido: string
+  tituloShopify: string | null
+  esAdicional: boolean
+  etapaB: boolean
+  etapaI: boolean
+  etapaA: boolean
+  etapaC: boolean
+  listo: boolean
+  listoEn: string | null
+  estado: EstadoOrden
+  canceladoEn: string | null
+  /* La nota del pedido sin RUT, teléfonos ni correos. */
+  notasProduccion: string | null
+}
+
+export interface DatosClienteOrden {
+  cliente: string | null
+  /* Texto completo original, con RUT y teléfono. */
+  infAdicional: string | null
+  direccion: string | null
+}

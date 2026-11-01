@@ -4,6 +4,7 @@ import { Inicio } from './pages/Inicio'
 import { Inventario } from './pages/Inventario'
 import { InventarioForm } from './pages/InventarioForm'
 import { Login } from './pages/Login'
+import { OrdenDetalle } from './pages/OrdenDetalle'
 import { PedidoDetalle } from './pages/PedidoDetalle'
 import { PedidoNuevo } from './pages/PedidoNuevo'
 import { Pedidos } from './pages/Pedidos'
@@ -85,6 +86,14 @@ function App() {
         element={
           <ProtectedRoute roles={['administrador', 'vendedor']}>
             <PedidoNuevo />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/pedidos/produccion/:id"
+        element={
+          <ProtectedRoute roles={['administrador', 'bodega']}>
+            <OrdenDetalle />
           </ProtectedRoute>
         }
       />
