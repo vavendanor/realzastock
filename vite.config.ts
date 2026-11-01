@@ -5,7 +5,7 @@ import { defineConfig } from 'vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
 // https://vite.dev/config/
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   server: {
     /* Sin esto, `npm run dev` solo escucha en localhost y un celular en la
        misma red no puede llegar al servidor aunque tenga la IP correcta. */
@@ -27,6 +27,11 @@ export default defineConfig({
        producción (Vercel) el certificado es real. */
     basicSsl(),
     VitePWA({
+      /* En la APK (`vite build --mode capacitor`) no hay service worker: los
+         archivos ya viajan dentro de la app, y un service worker con
+         autoUpdate podría dejar versiones viejas en caché tras instalar una
+         APK nueva. */
+      disable: mode === 'capacitor',
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg'],
       /* Por defecto el service worker solo se genera en el build de
@@ -87,4 +92,4 @@ export default defineConfig({
       },
     }),
   ],
-})
+}))

@@ -1,3 +1,4 @@
+import { Capacitor } from '@capacitor/core'
 import { useCallback, useEffect, useState } from 'react'
 
 /* 'beforeinstallprompt' y su evento todavía no son parte del DOM estándar
@@ -38,6 +39,8 @@ function detectarIOS() {
 
 function detectarInstalada() {
   if (typeof window === 'undefined') return false
+  // Dentro de la APK (Capacitor) ya es una app instalada: no se ofrece instalar.
+  if (Capacitor.isNativePlatform()) return true
   const comoStandalone = window.matchMedia?.('(display-mode: standalone)').matches ?? false
   // iOS no tiene 'display-mode: standalone' vía matchMedia en versiones
   // viejas; expone en cambio esta propiedad no estándar en el navigator.
