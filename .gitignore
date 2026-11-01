@@ -31,3 +31,7 @@ dev-dist
 
 # Documentación de contexto local (no se versiona)
 archivos de contexto/
+# Planillas con datos reales de clientes (RUT, teléfonos, correos): nunca al repo.
+*.xlsx
+*.xls
+*.csv
