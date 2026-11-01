@@ -19,6 +19,8 @@ import {
   listarOrdenes,
   marcarEtapa,
   ORDEN_ESTADOS_ORDEN,
+  ORDEN_ORIGENES,
+  ORIGEN_LABEL,
   type ConteoEstados,
   type FiltrosOrdenes,
   type OpcionesFiltro,
@@ -190,7 +192,7 @@ export function ProduccionLista({ recargaToken }: Props) {
     }
   }
 
-  const abrir = (o: OrdenFabricacion) => navigate(`/pedidos/produccion/${o.id}`)
+  const abrir = (o: OrdenFabricacion) => navigate(`/pedidos/${o.id}`)
 
   const casilla = (o: OrdenFabricacion, etapa: Etapa, etiqueta: string, grande: boolean) => (
     <CasillaEtapa
@@ -256,7 +258,7 @@ export function ProduccionLista({ recargaToken }: Props) {
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: esEscritorio ? 'repeat(6, minmax(0, 1fr))' : 'repeat(2, minmax(0, 1fr))',
+          gridTemplateColumns: esEscritorio ? 'repeat(4, minmax(0, 1fr))' : 'repeat(2, minmax(0, 1fr))',
           gap: 'var(--space-3)',
         }}
       >
@@ -268,6 +270,13 @@ export function ProduccionLista({ recargaToken }: Props) {
           value={filtros.estado}
           onChange={(e) => cambiarFiltros({ estado: e.target.value as FiltrosOrdenes['estado'] })}
           options={[{ value: 'todos', label: 'Todos' }, ...ORDEN_ESTADOS_ORDEN.map((e) => ({ value: e, label: ESTADO_ORDEN_LABEL[e] }))]}
+        />
+        <Select
+          label="Origen"
+          size={tamano}
+          value={filtros.origen}
+          onChange={(e) => cambiarFiltros({ origen: e.target.value as FiltrosOrdenes['origen'] })}
+          options={[{ value: 'todos', label: 'Todos' }, ...ORDEN_ORIGENES.map((o) => ({ value: o, label: ORIGEN_LABEL[o] }))]}
         />
         <Select
           label="Comuna"
@@ -358,6 +367,7 @@ export function ProduccionLista({ recargaToken }: Props) {
             {o.numero}
           </span>
           <EstadoOrdenBadge estado={o.estado} />
+          {o.origen === 'manual_shopify' && chip('Manual', 'neutro')}
           {o.esAdicional && chip('Adicional', 'neutro')}
         </div>
       ),
@@ -529,6 +539,7 @@ export function ProduccionLista({ recargaToken }: Props) {
                       <span className="rh-num" style={{ font: 'var(--type-body-strong)', color: 'var(--text-strong)' }}>
                         {o.numero}
                       </span>
+                      {o.origen === 'manual_shopify' && chip('Manual', 'neutro')}
                       {o.esAdicional && chip('Adicional', 'neutro')}
                     </div>
                     <div style={{ font: 'var(--type-body-strong)', color: 'var(--text-strong)' }}>{o.modelo ?? '—'}</div>

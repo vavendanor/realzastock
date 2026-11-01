@@ -1,24 +1,20 @@
-import { Banknote, TriangleAlert, Truck } from 'lucide-react'
+import { Banknote, Factory, TriangleAlert } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Shell } from '../components/layout/Shell'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
 import { DataTable, type Column } from '../components/ui/DataTable'
-import { EstadoBadge } from '../components/ui/EstadoBadge'
+import { EstadoOrdenBadge } from '../components/ui/EstadoOrdenBadge'
 import { KpiCard } from '../components/ui/KpiCard'
 import { ColorDot, ProductThumb } from '../components/ui/ProductoVisual'
 import { StockLevel } from '../components/ui/StockLevel'
 import { useEsEscritorio } from '../hooks/useMediaQuery'
 import { clp, hoy } from '../lib/format'
 import { listarVariantes, STOCK_MINIMO_DEFAULT } from '../lib/inventario'
-import { listarPedidos } from '../lib/pedidos'
+import { contarOrdenesPorEstado, formatearFechaPedido, listarUltimasOrdenes, type ConteoEstados } from '../lib/ordenes'
 import { listarVentas } from '../lib/ventas'
-import type { Pedido, ProductoVariante } from '../types'
-
-function formatearFecha(iso: string) {
-  return new Date(iso).toLocaleDateString('es-CL')
-}
+import type { OrdenFabricacion, ProductoVariante } from '../types'
 
 /* Pantalla de inicio del administrador. Es solo lectura: las cifras y
    listas de acá son un resumen para decidir qué revisar, no un punto de
@@ -29,7 +25,8 @@ export function Dashboard() {
 
   const [variantes, setVariantes] = useState<ProductoVariante[]>([])
   const [ventasHoy, setVentasHoy] = useState<{ total: number; cantidad: number }>({ total: 0, cantidad: 0 })
-  const [pedidos, setPedidos] = useState<Pedido[]>([])
+  const [conteoOrdenes, setConteoOrdenes] = useState<ConteoEstados | null>(null)
+  const [ultimasOrdenes, setUltimasOrdenes] = useState<OrdenFabricacion[]>([])
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -39,17 +36,19 @@ export function Dashboard() {
       setError(null)
       try {
         const fechaHoy = hoy()
-        const [datosVariantes, datosVentasHoy, datosPedidos] = await Promise.all([
+        const [datosVariantes, datosVentasHoy, datosConteo, datosUltimas] = await Promise.all([
           listarVariantes(),
           listarVentas({ desde: fechaHoy, hasta: fechaHoy }),
-          listarPedidos(),
+          contarOrdenesPorEstado(false),
+          listarUltimasOrdenes(5),
         ])
         setVariantes(datosVariantes)
         setVentasHoy({
           cantidad: datosVentasHoy.length,
           total: datosVentasHoy.reduce((suma, venta) => suma + venta.total, 0),
         })
-        setPedidos(datosPedidos)
+        setConteoOrdenes(datosConteo)
+        setUltimasOrdenes(datosUltimas)
       } catch (err) {
         setError(err instanceof Error ? err.message : 'No se pudo cargar el dashboard')
       } finally {
@@ -66,9 +65,8 @@ export function Dashboard() {
      solo enseña las 5 más urgentes (menos stock primero). */
   const variantesBajas = todasLasBajas.slice(0, 5)
 
-  const pedidosPendientes = pedidos.filter((p) => p.estado === 'pendiente' || p.estado === 'en_preparacion')
-  const soloPendientes = pedidos.filter((p) => p.estado === 'pendiente')
-  const ultimosPedidos = pedidos.slice(0, 5)
+  const porFabricar = conteoOrdenes?.por_fabricar ?? 0
+  const listosParaDespachar = conteoOrdenes?.fabricado ?? 0
 
   const columnasStock: Column<ProductoVariante>[] = [
     {
@@ -141,27 +139,29 @@ export function Dashboard() {
 
   const ultimos = (
     <Card
-      title="Últimos pedidos"
-      subtitle="Los 5 más recientes"
+      title="Últimas órdenes"
+      subtitle="Los 5 muebles más recientes"
       actions={
         <Button size="sm" variant="ghost" onClick={() => navigate('/pedidos')}>
-          Ver todos
+          Ver todas
         </Button>
       }
     >
       <div style={{ display: 'flex', flexDirection: 'column' }}>
-        {!cargando && ultimosPedidos.length === 0 && (
-          <span style={{ font: 'var(--type-body)', color: 'var(--text-muted)' }}>Todavía no hay pedidos.</span>
+        {!cargando && ultimasOrdenes.length === 0 && (
+          <span style={{ font: 'var(--type-body)', color: 'var(--text-muted)' }}>Todavía no hay órdenes de fabricación.</span>
         )}
-        {ultimosPedidos.map((pedido, i) => (
+        {ultimasOrdenes.map((orden, i) => (
           <div
-            key={pedido.id}
+            key={orden.id}
+            onClick={() => navigate(`/pedidos/${orden.id}`)}
             style={{
               display: 'flex',
               alignItems: 'center',
               gap: 'var(--space-3)',
               padding: 'var(--space-3) 0',
               borderTop: i ? '1px solid var(--border-hairline)' : 'none',
+              cursor: 'pointer',
             }}
           >
             <div style={{ flex: 1, minWidth: 0 }}>
@@ -174,13 +174,13 @@ export function Dashboard() {
                   whiteSpace: 'nowrap',
                 }}
               >
-                {pedido.clienteNombre}
+                {orden.numero} · {orden.modelo ?? '—'}
               </div>
               <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>
-                {formatearFecha(pedido.fechaCreacion)} · {pedido.unidades} {pedido.unidades === 1 ? 'unidad' : 'unidades'}
+                {[orden.tipo, orden.comuna].filter(Boolean).join(' · ') || '—'} · {formatearFechaPedido(orden.fechaPedido)}
               </div>
             </div>
-            <EstadoBadge estado={pedido.estado} />
+            <EstadoOrdenBadge estado={orden.estado} />
           </div>
         ))}
       </div>
@@ -219,11 +219,11 @@ export function Dashboard() {
           onClick={() => navigate('/ventas')}
         />
         <KpiCard
-          label="Pedidos pendientes"
-          value={cargando ? '—' : pedidosPendientes.length}
+          label="Muebles por fabricar"
+          value={cargando ? '—' : porFabricar}
           tone="warning"
-          icon={<Truck size={16} />}
-          footnote={cargando ? undefined : `${soloPendientes.length} sin preparar`}
+          icon={<Factory size={16} />}
+          footnote={cargando ? undefined : `${listosParaDespachar} listos para despachar`}
           onClick={() => navigate('/pedidos')}
         />
       </div>

@@ -5,8 +5,6 @@ import { Inventario } from './pages/Inventario'
 import { InventarioForm } from './pages/InventarioForm'
 import { Login } from './pages/Login'
 import { OrdenDetalle } from './pages/OrdenDetalle'
-import { PedidoDetalle } from './pages/PedidoDetalle'
-import { PedidoNuevo } from './pages/PedidoNuevo'
 import { Pedidos } from './pages/Pedidos'
 import { Probador } from './pages/Probador'
 import { UsuarioNuevo } from './pages/UsuarioNuevo'
@@ -15,8 +13,9 @@ import { Ventas } from './pages/Ventas'
 import { VentaNueva } from './pages/VentaNueva'
 
 /* Módulos listos: Inventario (administrador), Ventas (administrador y
-   vendedor), Pedidos (los tres roles, con distinto alcance cada uno) y
-   Usuarios (exclusivo de administrador). */
+   vendedor), Pedidos (órdenes de fabricación de Shopify: administrador y
+   bodega), Probador de colores (administrador y bodega) y Usuarios
+   (exclusivo de administrador). */
 function App() {
   return (
     <Routes>
@@ -76,32 +75,16 @@ function App() {
       <Route
         path="/pedidos"
         element={
-          <ProtectedRoute roles={['administrador', 'bodega', 'vendedor']}>
-            <Pedidos />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/pedidos/nuevo"
-        element={
-          <ProtectedRoute roles={['administrador', 'vendedor']}>
-            <PedidoNuevo />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/pedidos/produccion/:id"
-        element={
           <ProtectedRoute roles={['administrador', 'bodega']}>
-            <OrdenDetalle />
+            <Pedidos />
           </ProtectedRoute>
         }
       />
       <Route
         path="/pedidos/:id"
         element={
-          <ProtectedRoute roles={['administrador', 'bodega', 'vendedor']}>
-            <PedidoDetalle />
+          <ProtectedRoute roles={['administrador', 'bodega']}>
+            <OrdenDetalle />
           </ProtectedRoute>
         }
       />

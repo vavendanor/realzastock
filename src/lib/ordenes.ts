@@ -1,5 +1,12 @@
-import type { DatosClienteOrden, EstadoOrden, Etapa, OrdenFabricacion } from '../types'
+import type { DatosClienteOrden, EstadoOrden, Etapa, OrdenFabricacion, OrigenOrden } from '../types'
 import { supabase } from './supabaseClient'
+
+export const ORIGEN_LABEL: Record<OrigenOrden, string> = {
+  tienda_en_linea: 'Tienda en línea',
+  manual_shopify: 'Manual en Shopify',
+}
+
+export const ORDEN_ORIGENES: OrigenOrden[] = ['tienda_en_linea', 'manual_shopify']
 
 export const ESTADO_ORDEN_LABEL: Record<EstadoOrden, string> = {
   por_fabricar: 'Por fabricar',
@@ -83,7 +90,8 @@ export function fechaLocal(fecha: Date) {
 
 const COLUMNAS_ORDEN =
   'id,numero,pedido_numero,shopify_order_id,tipo,modelo,orientacion,cm,color,tela,region,comuna,comuna_revisar,patas,' +
-  'fecha_pedido,titulo_shopify,es_adicional,etapa_b,etapa_i,etapa_a,etapa_c,listo,listo_en,estado,cancelado_en,notas_produccion'
+  'fecha_pedido,titulo_shopify,es_adicional,etapa_b,etapa_i,etapa_a,etapa_c,listo,listo_en,estado,cancelado_en,notas_produccion,' +
+  'origen,origen_shopify,despachado_en,actualizado_en'
 
 interface OrdenRaw {
   id: string
@@ -112,6 +120,10 @@ interface OrdenRaw {
   estado: EstadoOrden
   cancelado_en: string | null
   notas_produccion: string | null
+  origen: OrigenOrden | null
+  origen_shopify: string | null
+  despachado_en: string | null
+  actualizado_en: string
 }
 
 function aplanarOrden(raw: OrdenRaw): OrdenFabricacion {
@@ -142,6 +154,10 @@ function aplanarOrden(raw: OrdenRaw): OrdenFabricacion {
     estado: raw.estado,
     canceladoEn: raw.cancelado_en,
     notasProduccion: raw.notas_produccion,
+    origen: raw.origen,
+    origenShopify: raw.origen_shopify,
+    despachadoEn: raw.despachado_en,
+    actualizadoEn: raw.actualizado_en,
   }
 }
 
@@ -170,6 +186,7 @@ export interface FiltrosOrdenes {
   comuna: string
   modelo: string
   tela: string
+  origen: OrigenOrden | 'todos'
   incluirAdicionales: boolean
 }
 
@@ -180,12 +197,15 @@ export const FILTROS_ORDENES_VACIOS: FiltrosOrdenes = {
   comuna: '',
   modelo: '',
   tela: '',
+  origen: 'todos',
   incluirAdicionales: false,
 }
 
 /* Cuántos filtros (sin contar "mostrar adicionales") están puestos. */
 export function filtrosActivos(f: FiltrosOrdenes) {
-  return [f.desde, f.hasta, f.estado !== 'todos' ? f.estado : '', f.comuna, f.modelo, f.tela].filter(Boolean).length
+  return [f.desde, f.hasta, f.estado !== 'todos' ? f.estado : '', f.comuna, f.modelo, f.tela, f.origen !== 'todos' ? f.origen : ''].filter(
+    Boolean,
+  ).length
 }
 
 /* Nunca trae datos personales del cliente: esos están en otra tabla. Las
@@ -200,6 +220,7 @@ export async function listarOrdenes(filtros: FiltrosOrdenes): Promise<{ ordenes:
   if (filtros.comuna) consulta = consulta.eq('comuna', filtros.comuna)
   if (filtros.modelo) consulta = consulta.eq('modelo', filtros.modelo)
   if (filtros.tela) consulta = consulta.eq('tela', filtros.tela)
+  if (filtros.origen !== 'todos') consulta = consulta.eq('origen', filtros.origen)
 
   const { data, error } = await consulta
     .order('fecha_pedido', { ascending: false })
@@ -209,6 +230,21 @@ export async function listarOrdenes(filtros: FiltrosOrdenes): Promise<{ ordenes:
   if (error) throw new Error(error.message)
   const filas = ((data ?? []) as unknown as OrdenRaw[]).map(aplanarOrden)
   return { ordenes: ordenarOrdenes(filas), limitado: filas.length >= LIMITE_ORDENES }
+}
+
+/* Las órdenes más recientes (solo muebles, sin adicionales ni canceladas), para
+   el Dashboard. */
+export async function listarUltimasOrdenes(cantidad = 5): Promise<OrdenFabricacion[]> {
+  const { data, error } = await supabase
+    .from('ordenes_fabricacion')
+    .select(COLUMNAS_ORDEN)
+    .is('cancelado_en', null)
+    .eq('es_adicional', false)
+    .order('fecha_pedido', { ascending: false })
+    .order('pedido_numero', { ascending: false })
+    .limit(cantidad)
+  if (error) throw new Error(error.message)
+  return ordenarOrdenes(((data ?? []) as unknown as OrdenRaw[]).map(aplanarOrden))
 }
 
 export type ConteoEstados = Record<EstadoOrden, number>
@@ -288,7 +324,14 @@ export interface OrdenCompleta {
   cliente: DatosClienteOrden | null
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 export async function obtenerOrden(id: string): Promise<OrdenCompleta> {
+  /* Una dirección como /pedidos/nuevo (del flujo antiguo) o con un id mal
+     escrito no es un uuid: se evita pedírselo a la base de datos, que
+     respondería con un error técnico. */
+  if (!UUID.test(id)) throw new Error('No se encontró la orden, o no tienes acceso a ella.')
+
   const { data, error } = await supabase.from('ordenes_fabricacion').select(COLUMNAS_ORDEN).eq('id', id).maybeSingle()
   if (error) throw new Error(error.message)
   if (!data) throw new Error('No se encontró la orden, o no tienes acceso a ella.')
@@ -301,12 +344,17 @@ export async function obtenerOrden(id: string): Promise<OrdenCompleta> {
       .eq('shopify_order_id', orden.shopifyOrderId)
       .is('cancelado_en', null)
       .neq('id', id),
-    supabase.from('ordenes_fabricacion_cliente').select('cliente,inf_adicional,direccion').eq('orden_id', id).maybeSingle(),
+    supabase.from('ordenes_fabricacion_cliente').select('cliente,telefono,inf_adicional,direccion').eq('orden_id', id).maybeSingle(),
   ])
   if (hermanasRes.error) throw new Error(hermanasRes.error.message)
   if (clienteRes.error) throw new Error(clienteRes.error.message)
 
-  const cliente = clienteRes.data as { cliente: string | null; inf_adicional: string | null; direccion: string | null } | null
+  const cliente = clienteRes.data as {
+    cliente: string | null
+    telefono: string | null
+    inf_adicional: string | null
+    direccion: string | null
+  } | null
 
   return {
     orden,
@@ -315,7 +363,9 @@ export async function obtenerOrden(id: string): Promise<OrdenCompleta> {
     hermanas: ((hermanasRes.data ?? []) as unknown as OrdenRaw[])
       .map(aplanarOrden)
       .sort((a, b) => claveNumero(a.numero)[1] - claveNumero(b.numero)[1]),
-    cliente: cliente ? { cliente: cliente.cliente, infAdicional: cliente.inf_adicional, direccion: cliente.direccion } : null,
+    cliente: cliente
+      ? { cliente: cliente.cliente, telefono: cliente.telefono, infAdicional: cliente.inf_adicional, direccion: cliente.direccion }
+      : null,
   }
 }
 

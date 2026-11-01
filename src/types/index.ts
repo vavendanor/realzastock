@@ -1,7 +1,5 @@
 export type UserRole = 'administrador' | 'vendedor' | 'bodega'
 
-export type EstadoPedido = 'pendiente' | 'en_preparacion' | 'despachado' | 'entregado'
-
 export type UbicacionStock = 'bodega' | 'showroom'
 
 export type CanalVenta = 'online' | 'showroom'
@@ -51,52 +49,6 @@ export interface Venta {
   total: number
 }
 
-export interface PedidoItem {
-  varianteId: string
-  sku: string
-  modelo: string
-  color: string
-  material: string
-  cantidad: number
-  /* Si el pedido nace de una venta, el precio al que se vendió; si no, el
-     del catálogo actual. */
-  precio: number
-}
-
-/* Calle, comuna y región son obligatorias; la referencia es opcional. */
-export interface DireccionDespacho {
-  calle: string
-  comuna: string
-  /* Ya no se pide en el formulario (región y comuna salen de listas), pero
-     los pedidos anteriores la conservan. */
-  ciudad: string | null
-  region: string
-  referencia: string | null
-}
-
-export interface Pedido {
-  id: string
-  clienteNombre: string
-  clienteContacto: string | null
-  direccion: DireccionDespacho
-  /* Venta de la que nació el pedido. Si existe, el stock ya se descontó al
-     vender y despachar no lo vuelve a descontar. */
-  ventaId: string | null
-  estado: EstadoPedido
-  fechaCreacion: string
-  fechaActualizacion: string
-  /* Cuándo y desde dónde se despachó. Solo existen en pedidos despachados
-     después de la migración 0010; los anteriores quedan en null. Con venta,
-     `despachadoDesde` también es null: al despachar no se movió stock. */
-  despachadoEn: string | null
-  despachadoDesde: UbicacionStock | null
-  responsableId: string
-  responsableNombre: string
-  items: PedidoItem[]
-  unidades: number
-  total: number
-}
-
 export interface Usuario {
   id: string
   nombre: string
@@ -111,6 +63,10 @@ export type EstadoOrden = 'por_fabricar' | 'fabricado' | 'en_despacho' | 'entreg
 
 /* b, i, a, c: etapas de fabricación. listo: el mueble terminó. */
 export type Etapa = 'b' | 'i' | 'a' | 'c' | 'listo'
+
+/* De dónde vino el pedido en Shopify. "web" es la tienda en línea; todo lo
+   demás (pedido de borrador, POS, app móvil...) es un pedido manual. */
+export type OrigenOrden = 'tienda_en_linea' | 'manual_shopify'
 
 /* Una orden = un mueble. Aquí NO hay datos personales del cliente: viven en
    otra tabla (DatosClienteOrden) que solo se pide al abrir el detalle. */
@@ -143,10 +99,19 @@ export interface OrdenFabricacion {
   canceladoEn: string | null
   /* La nota del pedido sin RUT, teléfonos ni correos. */
   notasProduccion: string | null
+  /* Null si Shopify no informó el origen. `origenShopify` es el valor crudo
+     (sourceName: "web", "shopify_draft_order", "pos"...). */
+  origen: OrigenOrden | null
+  origenShopify: string | null
+  /* Cuándo salió a despacho. Las órdenes que ya estaban en despacho antes de
+     la migración 0013 no lo tienen. */
+  despachadoEn: string | null
+  actualizadoEn: string
 }
 
 export interface DatosClienteOrden {
   cliente: string | null
+  telefono: string | null
   /* Texto completo original, con RUT y teléfono. */
   infAdicional: string | null
   direccion: string | null

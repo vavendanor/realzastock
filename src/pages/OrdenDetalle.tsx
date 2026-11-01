@@ -1,14 +1,17 @@
-import { ArrowLeft, ArrowRight, ClipboardList, MapPin, TriangleAlert, User } from 'lucide-react'
+import { ArrowLeft, ArrowRight, ClipboardList, FileDown, MapPin, Phone, TriangleAlert, User } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
+import { flushSync } from 'react-dom'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { CasillaEtapa } from '../components/CasillaEtapa'
+import { ComprobanteDespacho } from '../components/ComprobanteDespacho'
 import { Shell } from '../components/layout/Shell'
 import { Breadcrumb } from '../components/ui/Breadcrumb'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
 import { EstadoOrdenBadge } from '../components/ui/EstadoOrdenBadge'
 import { useEsEscritorio } from '../hooks/useMediaQuery'
-import { formatearFechaHora } from '../lib/format'
+import { imprimirConTitulo } from '../lib/comprobante'
+import { formatearFechaHora, formatearTelefono, normalizarTelefono, telefonoValido } from '../lib/format'
 import {
   aplicarEtapaLocal,
   avanzarEstadoOrden,
@@ -20,6 +23,7 @@ import {
   formatearFechaPedido,
   marcarEtapa,
   obtenerOrden,
+  ORIGEN_LABEL,
   type OrdenCompleta,
 } from '../lib/ordenes'
 import type { Etapa } from '../types'
@@ -38,6 +42,7 @@ export function OrdenDetalle() {
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [guardando, setGuardando] = useState(false)
+  const [emitidoEn, setEmitidoEn] = useState(() => new Date().toISOString())
 
   const cargar = useCallback(async () => {
     if (!id) return
@@ -88,6 +93,27 @@ export function OrdenDetalle() {
   const bloqueada = etapasBloqueadas(orden)
   const siguiente = ESTADO_ORDEN_SIGUIENTE[orden.estado]
 
+  /* El comprobante es por pedido: lista los muebles del pedido que salen a
+     despacho (en despacho o entregados). Se ofrece cuando esta orden ya salió. */
+  const salenADespacho = (o: { estado: string; canceladoEn: string | null }) =>
+    o.canceladoEn === null && (o.estado === 'en_despacho' || o.estado === 'entregado')
+  const mueblesDelDespacho = [orden, ...hermanas]
+    .filter(salenADespacho)
+    .sort((a, b) => a.numero.localeCompare(b.numero, 'es', { numeric: true }))
+  const puedeVerComprobante = salenADespacho(orden)
+
+  const descargarComprobante = () => {
+    /* flushSync: la hora de emisión tiene que estar pintada ANTES de abrir el
+       diálogo de impresión, y un setState normal se aplicaría después. */
+    flushSync(() => setEmitidoEn(new Date().toISOString()))
+    imprimirConTitulo(`Comprobante de despacho ${orden.pedidoNumero}`)
+  }
+
+  const telefonoLegible = (valor: string) => {
+    const digitos = normalizarTelefono(valor)
+    return telefonoValido(digitos) ? formatearTelefono(digitos) : valor
+  }
+
   const cambiarEtapa = async (etapa: Etapa, valor: boolean) => {
     if (etapa === 'listo' && !valor && !window.confirm(`¿Quitar LISTO de ${orden.numero}? Volverá a "Por fabricar".`)) return
     setError(null)
@@ -126,7 +152,17 @@ export function OrdenDetalle() {
   )
 
   const avance = (
-    <Card title="Avance de fabricación" subtitle={`Pedido del ${formatearFechaPedido(orden.fechaPedido)}`}>
+    <Card
+      title="Avance de fabricación"
+      subtitle={`Pedido del ${formatearFechaPedido(orden.fechaPedido)}`}
+      actions={
+        puedeVerComprobante ? (
+          <Button size="sm" variant="secondary" iconLeft={<FileDown size={15} />} onClick={descargarComprobante}>
+            Descargar comprobante
+          </Button>
+        ) : undefined
+      }
+    >
       <div
         style={{
           display: 'grid',
@@ -196,6 +232,7 @@ export function OrdenDetalle() {
   const mueble = (
     <Card title="Mueble">
       <div>
+        {fila('Origen', orden.origen ? ORIGEN_LABEL[orden.origen] : null)}
         {fila('Modelo', orden.modelo)}
         {fila('Tipo', orden.tipo)}
         {fila('Orientación', orden.orientacion)}
@@ -232,6 +269,12 @@ export function OrdenDetalle() {
             <User size={16} color="var(--text-faint)" style={{ flex: '0 0 auto', marginTop: 3 }} />
             <span>{cliente.cliente || 'Sin nombre'}</span>
           </div>
+          {cliente.telefono && (
+            <div style={{ display: 'flex', gap: 'var(--space-3)', font: 'var(--type-body)', color: 'var(--text-body)' }}>
+              <Phone size={16} color="var(--text-faint)" style={{ flex: '0 0 auto', marginTop: 3 }} />
+              <span>{telefonoLegible(cliente.telefono)}</span>
+            </div>
+          )}
           <div style={{ display: 'flex', gap: 'var(--space-3)', font: 'var(--type-body)', color: 'var(--text-body)' }}>
             <MapPin size={16} color="var(--text-faint)" style={{ flex: '0 0 auto', marginTop: 3 }} />
             <div>
@@ -265,7 +308,7 @@ export function OrdenDetalle() {
       {hermanas.map((h, i) => (
         <Link
           key={h.id}
-          to={`/pedidos/produccion/${h.id}`}
+          to={`/pedidos/${h.id}`}
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -347,6 +390,8 @@ export function OrdenDetalle() {
           {delPedido}
         </div>
       )}
+
+      {puedeVerComprobante && <ComprobanteDespacho orden={orden} muebles={mueblesDelDespacho} cliente={cliente} emitidoEn={emitidoEn} />}
     </Shell>
   )
 }

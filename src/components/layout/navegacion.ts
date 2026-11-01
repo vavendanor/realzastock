@@ -19,7 +19,7 @@ const NAV: NavItem[] = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, to: '/', roles: ['administrador'] },
   { id: 'inventario', label: 'Inventario', icon: Package, to: '/inventario', roles: ['administrador'] },
   { id: 'ventas', label: 'Ventas', icon: Receipt, to: '/ventas', roles: ['administrador', 'vendedor'] },
-  { id: 'pedidos', label: 'Pedidos', icon: Truck, to: '/pedidos', roles: ['administrador', 'bodega', 'vendedor'] },
+  { id: 'pedidos', label: 'Pedidos', icon: Truck, to: '/pedidos', roles: ['administrador', 'bodega'] },
   {
     id: 'probador',
     label: 'Probador de colores',

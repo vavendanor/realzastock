@@ -182,9 +182,9 @@
     text-align: right;
   }
 
-  /* Un SKU partido en dos líneas se lee mal y se puede confundir al
-     buscarlo en bodega: la columna se ensancha en vez de cortarlo. */
-  .cp-sku {
+  /* Un número de orden partido en dos líneas ("1180-" / "2") se lee mal y se
+     puede confundir al buscarlo: la columna se ensancha en vez de cortarlo. */
+  .cp-num {
     font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace;
     font-size: 9.5pt;
     white-space: nowrap;

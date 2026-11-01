@@ -1,5 +1,4 @@
 import type { CanalVenta, UbicacionStock, Venta, VentaItem } from '../types'
-import { haceDias } from './format'
 import { supabase } from './supabaseClient'
 
 export const CANALES: { value: CanalVenta; label: string }[] = [
@@ -92,31 +91,6 @@ export async function listarVentas(filtros: FiltrosVentas = {}): Promise<Venta[]
 
   if (error) throw new Error(error.message)
   return (data as unknown as VentaRaw[]).map(aplanar)
-}
-
-/* Ventas de los últimos `dias` días que todavía no tienen pedido, para el
-   selector "Basar en una venta". RLS decide el alcance (el vendedor solo ve
-   las suyas, el administrador todas).
-   Caso borde: si un administrador creó el pedido de una venta de un vendedor,
-   ese vendedor no ve ese pedido (RLS) y la venta le sigue apareciendo; al
-   elegirla, crear_pedido la rechaza con un mensaje claro. */
-export async function listarVentasSinPedido(dias = 30, limite = 50): Promise<Venta[]> {
-  const { data, error } = await supabase
-    .from('ventas')
-    .select(`${SELECT_VENTA}, pedidos ( id )`)
-    .is('pedidos', null)
-    .gte('fecha', `${haceDias(dias)}T00:00:00`)
-    .order('fecha', { ascending: false })
-    .limit(limite)
-
-  if (error) throw new Error(error.message)
-
-  type ConPedidos = VentaRaw & { pedidos: { id: string } | { id: string }[] | null }
-  return (data as unknown as ConPedidos[])
-    /* Refuerzo por si el filtro del servidor no excluyera algo: según la
-       relación, PostgREST devuelve el pedido como objeto o como lista. */
-    .filter((raw) => (Array.isArray(raw.pedidos) ? raw.pedidos.length === 0 : raw.pedidos == null))
-    .map(aplanar)
 }
 
 export interface ItemNuevaVenta {
