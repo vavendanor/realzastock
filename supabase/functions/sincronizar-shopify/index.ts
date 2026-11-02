@@ -31,6 +31,24 @@
 //              personales, para compararlas con la planilla.
 //   ?desde=AAAA-MM-DD   reprocesa desde esa fecha (nunca antes de
 //              sync_shopify.importar_desde).
+//   ?diag=1280,1285   DIAGNÓSTICO de esos pedidos (máximo 20): devuelve cómo
+//              informa Shopify su forma de entrega (línea de envío, si tiene
+//              dirección o teléfono, método de entrega si el permiso lo deja
+//              leer) SIN datos personales. Implica dry: nunca escribe nada.
+//
+// "Preparado" de Shopify (migración 0015):
+//   * En Shopify, "Preparado" (fulfilled) equivale a LISTO / "fabricado". Se
+//     lee por LÍNEA (cantidad preparada de cada línea), no por pedido, para
+//     respetar las preparaciones parciales.
+//   * Con sync_shopify.aplicar_preparado = false (el valor inicial) la
+//     sincronización NO cambia ningún estado ni guarda lo que dice Shopify: el
+//     modo dry solo informa cuántos subirían.
+//   * Con la bandera encendida, solo sube "por fabricar" -> "fabricado", y solo
+//     cuando Shopify cambia de "no preparado" a "preparado". Nunca baja, ni toca
+//     en despacho, entregado, canceladas ni las etapas B, I, A y C. Esa regla
+//     la hace cumplir marcar_fabricadas_shopify() en la base de datos.
+//   * Si en Shopify desmarcan un preparado, no se cambia nada en la app: solo
+//     se registra y se advierte.
 //
 // Reglas de la sincronización:
 //   * Idempotente: la clave de cada mueble es (id de la línea de Shopify,
@@ -76,7 +94,11 @@ export interface OpcionShopify {
 export interface LineaShopify {
   id: string
   title: string | null
+  /* quantity: lo pedido originalmente; currentQuantity: lo que queda tras
+     ediciones; unfulfilledQuantity: lo que falta preparar. */
+  quantity?: number | null
   currentQuantity: number
+  unfulfilledQuantity?: number | null
   variantTitle: string | null
   variant: { selectedOptions: OpcionShopify[] } | null
   product: { title: string | null; productType: string | null; description: string | null } | null
@@ -90,6 +112,10 @@ export interface PedidoShopify {
   cancelledAt: string | null
   note: string | null
   sourceName: string | null
+  /* FULFILLED = "Preparado"; PARTIALLY_FULFILLED = "Parcialmente preparado"... */
+  displayFulfillmentStatus?: string | null
+  /* Cuándo se preparó (para fechar el LISTO). */
+  fulfillments?: { createdAt: string }[] | null
   customer: { displayName: string | null } | null
   shippingLine: { title: string | null } | null
   shippingAddress: {
@@ -125,6 +151,9 @@ export interface FilaOrden {
   titulo_shopify: string | null
   pedido_creado_en: string
   origen_shopify: string | null
+  /* Lo que dice Shopify de ESTA unidad (preparada o no). Solo se guarda con
+     la bandera aplicar_preparado encendida: si no, se omite del guardado. */
+  shopify_preparado: boolean
 }
 
 /* Datos personales: van a ordenes_fabricacion_cliente. */
@@ -220,11 +249,35 @@ export interface MuebleMapeado {
 export interface ResultadoMapeo {
   muebles: MuebleMapeado[]
   cliente: DatosCliente
+  /* Cómo es la entrega, para los conteos del dry-run (sin datos personales). */
+  entrega: { retiro: boolean; sinDireccion: boolean; sinTelefono: boolean }
+  /* Calidad de lo que informó Shopify sobre la preparación. */
+  preparado: {
+    /* Líneas donde lo pedido y lo vigente no coinciden (la cantidad
+       preparada puede no ser exacta). */
+    lineasConCantidadesDistintas: number
+    /* Líneas donde Shopify no informó la cantidad por preparar. */
+    lineasSinDato: number
+  }
+  /* El momento más reciente en que Shopify preparó algo de este pedido. */
+  preparadoEn: string | null
+}
+
+/* Cuántas unidades de una línea tiene Shopify preparadas: lo pedido menos lo
+   que falta preparar, sin pasar de lo vigente. Si Shopify no informó cuánto
+   falta, se asume que NADA está preparado (lo más seguro: no sube nada). */
+export function unidadesPreparadas(li: Pick<LineaShopify, 'quantity' | 'currentQuantity' | 'unfulfilledQuantity'>) {
+  const vigentes = Math.max(0, li.currentQuantity)
+  const pedidas = typeof li.quantity === 'number' ? li.quantity : vigentes
+  if (typeof li.unfulfilledQuantity !== 'number') return 0
+  return Math.min(vigentes, Math.max(0, pedidas - li.unfulfilledQuantity))
 }
 
 export function mapearPedido(o: PedidoShopify): ResultadoMapeo {
   const retiro = Boolean(o.shippingLine?.title && /retiro/i.test(o.shippingLine.title))
   const dir = o.shippingAddress
+  let lineasConCantidadesDistintas = 0
+  let lineasSinDato = 0
   const region = retiro || !dir ? '' : regionNormalizada(dir.province)
   const comuna = retiro ? 'RETIRO TIENDA' : !dir ? SIN_DIRECCION : may(dir.city)
   const numeroPedido = o.name.replace('#', '')
@@ -241,6 +294,9 @@ export function mapearPedido(o: PedidoShopify): ResultadoMapeo {
     const tela = may(o.tela?.value) || a.tela || may(opcion(li, /tela|material/i))
     const patas = may(o.patas?.value) || 'PREDETERMINADAS'
     const orient = orientacion(li, a.tipo)
+    const preparadas = unidadesPreparadas(li)
+    if (typeof li.unfulfilledQuantity !== 'number') lineasSinDato++
+    else if (typeof li.quantity === 'number' && li.quantity !== li.currentQuantity) lineasConCantidadesDistintas++
 
     for (let i = 0; i < li.currentQuantity; i++) {
       const fila: FilaOrden = {
@@ -261,6 +317,9 @@ export function mapearPedido(o: PedidoShopify): ResultadoMapeo {
         titulo_shopify: nulo(titulo),
         pedido_creado_en: o.createdAt,
         origen_shopify: o.sourceName ? o.sourceName : null,
+        // Las primeras N unidades de la línea son las preparadas (no se sabe
+        // cuáles son físicamente: importa la cantidad).
+        shopify_preparado: i < preparadas,
       }
       const revisar: string[] = []
       if (esMueble(fila.tipo)) {
@@ -286,7 +345,14 @@ export function mapearPedido(o: PedidoShopify): ResultadoMapeo {
     inf_adicional: nulo(o.note || ''),
     direccion: nulo(direccion),
   }
-  return { muebles, cliente }
+  const fechasPreparado = (o.fulfillments ?? []).map((f) => f.createdAt).filter(Boolean).sort()
+  return {
+    muebles,
+    cliente,
+    entrega: { retiro, sinDireccion: !retiro && !dir, sinTelefono: !dir?.phone?.trim() },
+    preparado: { lineasConCantidadesDistintas, lineasSinDato },
+    preparadoEn: fechasPreparado.length ? fechasPreparado[fechasPreparado.length - 1] : null,
+  }
 }
 
 
@@ -410,19 +476,49 @@ const QUERY_PEDIDOS = `query($q: String, $after: String) {
   orders(first: ${PEDIDOS_POR_PAGINA}, after: $after, sortKey: UPDATED_AT, query: $q) {
     pageInfo { hasNextPage endCursor }
     nodes {
-      id name createdAt updatedAt cancelledAt note sourceName
+      id name createdAt updatedAt cancelledAt note sourceName displayFulfillmentStatus
       customer { displayName }
       shippingLine { title }
       shippingAddress { name address1 address2 city province phone }
       tela: metafield(namespace: "custom", key: "tela") { value }
       patas: metafield(namespace: "custom", key: "patas") { value }
+      fulfillments(first: 10) { createdAt }
       lineItems(first: ${LINEAS_POR_PEDIDO}) {
         pageInfo { hasNextPage }
         nodes {
-          id title currentQuantity variantTitle
+          id title quantity currentQuantity unfulfilledQuantity variantTitle
           variant { selectedOptions { name value } }
           product { title productType description(truncateAt: 400) }
         }
+      }
+    }
+  }
+}`
+
+/* Diagnóstico de la forma de entrega de unos pedidos concretos. Se piden solo
+   campos técnicos; los que podrían ser datos personales (calle, teléfono,
+   nota) se leen únicamente para saber si están o no, y NO se devuelven. */
+const QUERY_DIAGNOSTICO = `query($q: String) {
+  orders(first: 5, query: $q) {
+    nodes {
+      name sourceName displayFulfillmentStatus tags note
+      customAttributes { key }
+      shippingLine { title code source deliveryCategory }
+      shippingAddress { address1 phone }
+      lineItems(first: 10) { nodes { requiresShipping } }
+    }
+  }
+}`
+
+/* El método de entrega ("retiro en tienda") vive en las órdenes de
+   cumplimiento. Exige un permiso que quizá la app no tenga: por eso va en una
+   consulta aparte, y si Shopify la rechaza solo se informa que no se pudo leer. */
+const QUERY_DIAGNOSTICO_ENTREGA = `query($q: String) {
+  orders(first: 5, query: $q) {
+    nodes {
+      name
+      fulfillmentOrders(first: 5) {
+        nodes { status deliveryMethod { methodType } assignedLocation { name } }
       }
     }
   }
@@ -435,6 +531,8 @@ const QUERY_PEDIDOS = `query($q: String, $after: String) {
 export interface Configuracion {
   importarDesde: string // AAAA-MM-DD
   ultimaSincronizacion: string | null
+  /* sync_shopify.aplicar_preparado: apagada al inicio (migración 0015). */
+  aplicarPreparado: boolean
 }
 
 export interface OrdenExistente {
@@ -449,7 +547,14 @@ export interface OrdenExistente {
   etapa_c: boolean
   listo: boolean
   cancelado_en: string | null
+  /* Lo último que dijo Shopify de esta unidad (solo se guarda con la bandera encendida). */
+  shopify_preparado: boolean
 }
+
+/* Lo que se escribe en ordenes_fabricacion. `shopify_preparado` se omite
+   mientras la bandera aplicar_preparado esté apagada, así que la columna no
+   se toca. */
+export type FilaParaGuardar = Omit<FilaOrden, 'shopify_preparado'> & { shopify_preparado?: boolean }
 
 export interface OrdenGuardada {
   id: string
@@ -463,16 +568,25 @@ export interface Almacen {
   /* Toma la marca de "corrida en curso"; null si ya hay otra en marcha. */
   reservar(): Promise<Configuracion | null>
   existentes(pedidoIds: string[]): Promise<OrdenExistente[]>
-  guardarOrdenes(filas: FilaOrden[]): Promise<OrdenGuardada[]>
+  guardarOrdenes(filas: FilaParaGuardar[]): Promise<OrdenGuardada[]>
   guardarClientes(filas: FilaCliente[]): Promise<void>
   marcarCanceladas(ids: string[], cuando: string): Promise<void>
   restaurar(ids: string[]): Promise<void>
+  /* Sube a "fabricado" lo que Shopify tiene preparado. La base de datos solo
+     acepta las que siguen "por fabricar"; devuelve cuántas subió. */
+  marcarFabricadas(ids: string[], cuando: string | null): Promise<number>
   finalizar(ultima: string | null, ordenes: number, error: string | null): Promise<void>
 }
 
-const aConfiguracion = (r: { importar_desde: string; ultima_sincronizacion: string | null }): Configuracion => ({
+const aConfiguracion = (r: {
+  importar_desde: string
+  ultima_sincronizacion: string | null
+  aplicar_preparado?: boolean | null
+}): Configuracion => ({
   importarDesde: String(r.importar_desde).slice(0, 10),
   ultimaSincronizacion: r.ultima_sincronizacion,
+  /* Una base sin la migración 0015 no trae la columna: se trata como apagada. */
+  aplicarPreparado: r.aplicar_preparado === true,
 })
 
 const trozos = <T>(lista: T[], tamano: number) => {
@@ -489,7 +603,11 @@ export function almacenSupabase(admin: any): Almacen { // eslint-disable-line @t
   }
   return {
     async leerConfiguracion() {
-      const { data, error } = await admin.from('sync_shopify').select('importar_desde, ultima_sincronizacion').eq('id', true).single()
+      const { data, error } = await admin
+        .from('sync_shopify')
+        .select('importar_desde, ultima_sincronizacion, aplicar_preparado')
+        .eq('id', true)
+        .single()
       falla('No se pudo leer sync_shopify', error)
       return aConfiguracion(data)
     },
@@ -503,7 +621,9 @@ export function almacenSupabase(admin: any): Almacen { // eslint-disable-line @t
       if (pedidoIds.length === 0) return []
       const { data, error } = await admin
         .from('ordenes_fabricacion')
-        .select('id, shopify_order_id, shopify_line_item_id, unidad, estado, etapa_b, etapa_i, etapa_a, etapa_c, listo, cancelado_en')
+        .select(
+          'id, shopify_order_id, shopify_line_item_id, unidad, estado, etapa_b, etapa_i, etapa_a, etapa_c, listo, cancelado_en, shopify_preparado',
+        )
         .in('shopify_order_id', pedidoIds)
       falla('No se pudieron leer las órdenes existentes', error)
       return (data ?? []) as OrdenExistente[]
@@ -537,6 +657,15 @@ export function almacenSupabase(admin: any): Almacen { // eslint-disable-line @t
         const { error } = await admin.from('ordenes_fabricacion').update({ cancelado_en: null }).in('id', lote)
         falla('No se pudieron restaurar las órdenes', error)
       }
+    },
+    async marcarFabricadas(ids, cuando) {
+      let subidas = 0
+      for (const lote of trozos(ids, 100)) {
+        const { data, error } = await admin.rpc('marcar_fabricadas_shopify', { p_ids: lote, p_cuando: cuando })
+        falla('No se pudieron marcar las órdenes preparadas', error)
+        subidas += Number(data ?? 0)
+      }
+      return subidas
     },
     async finalizar(ultima, ordenes, errorTexto) {
       const { error } = await admin.rpc('finalizar_sync_shopify', { p_ultima: ultima, p_ordenes: ordenes, p_error: errorTexto })
@@ -582,11 +711,101 @@ export interface ResultadoCorrida {
   revisar: { numero: string; motivos: string[] }[]
   advertencias: string[]
   errores: string[]
-  filas?: Record<string, string | number | null>[]
+  /* Lo que dice Shopify de la preparación ("Preparado") y qué se hizo con eso. */
+  preparado: {
+    /* Estado de sync_shopify.aplicar_preparado en esta corrida. */
+    bandera_aplicar_preparado: boolean
+    unidades_preparadas_en_shopify: number
+    pedidos_por_estado_de_preparacion: Record<string, number>
+    /* Unidades que pasarían (dry) o pasan (con la bandera) de "por fabricar" a "fabricado". */
+    subirian_a_fabricado: number
+    /* Unidades que Shopify tiene preparadas y que en la app ya están más adelante. */
+    ya_avanzadas: number
+    /* Unidades que antes estaban preparadas en Shopify y ya no (solo con la bandera encendida). */
+    desmarcados_en_shopify: number
+    lineas_con_cantidades_distintas: number
+    lineas_sin_dato_de_preparacion: number
+    /* Unidades que realmente se subieron (siempre 0 en dry o con la bandera apagada). */
+    subidas: number
+    numeros_que_subirian: string[]
+  }
+  /* Cómo es la entrega de los pedidos importables (por pedido, no por mueble). */
+  entrega: {
+    retiros: number
+    sin_direccion: number
+    sin_telefono: number
+    pedidos_retiro: string[]
+    pedidos_sin_direccion: string[]
+    pedidos_sin_telefono: string[]
+  }
+  filas?: Record<string, string | number | boolean | null>[]
 }
 
 const tieneAvance = (o: OrdenExistente) => o.estado !== 'por_fabricar' || o.etapa_b || o.etapa_i || o.etapa_a || o.etapa_c || o.listo
 const clave = (lineaId: string, unidad: number) => `${lineaId}|${unidad}`
+
+export interface EvaluacionPreparado {
+  /* Unidades que Shopify tiene preparadas en este pedido. */
+  unidadesPreparadas: number
+  /* Unidades que corresponde subir a "fabricado". */
+  subir: { lineaId: string; unidad: number; numero: string }[]
+  yaAvanzadas: number
+  desmarcadas: number
+}
+
+/* Decide qué unidades de un pedido suben a "fabricado" por lo que dice
+   Shopify, línea por línea. Con N unidades preparadas en Shopify:
+     * nPrev: cuántas ya estaban registradas como preparadas (lo último que dijo
+       Shopify). Solo cuenta lo NUEVO: N - nPrev. Así, si alguien desmarca LISTO
+       en la app, no se vuelve a marcar mientras Shopify siga igual.
+     * K: cuántas unidades de la línea ya están más allá de "por fabricar" en
+       la app. Nunca se sube más de N - K, para no pasar de lo que dice Shopify
+       cuando la app ya iba adelantada.
+     * Se suben las de número más bajo que sigan "por fabricar".
+   Que Shopify desmarque (N < nPrev) no baja nada: solo se cuenta. */
+export function evaluarPreparacion(muebles: MuebleMapeado[], previas: OrdenExistente[]): EvaluacionPreparado {
+  const porLinea = new Map<string, MuebleMapeado[]>()
+  for (const m of muebles) {
+    const lista = porLinea.get(m.fila.shopify_line_item_id) ?? []
+    lista.push(m)
+    porLinea.set(m.fila.shopify_line_item_id, lista)
+  }
+  const e: EvaluacionPreparado = { unidadesPreparadas: 0, subir: [], yaAvanzadas: 0, desmarcadas: 0 }
+  for (const [lineaId, unidades] of porLinea) {
+    unidades.sort((a, b) => a.fila.unidad - b.fila.unidad)
+    const n = unidades.filter((m) => m.fila.shopify_preparado).length
+    e.unidadesPreparadas += n
+    const previasLinea = previas.filter((o) => o.shopify_line_item_id === lineaId && o.cancelado_en === null)
+    const nPrev = previasLinea.filter((o) => o.shopify_preparado).length
+    const k = previasLinea.filter((o) => o.estado !== 'por_fabricar').length
+    e.yaAvanzadas += previasLinea.filter((o) => o.estado !== 'por_fabricar' && o.unidad <= n).length
+    if (n < nPrev) e.desmarcadas += nPrev - n
+    const aSubir = Math.max(0, Math.min(n - nPrev, n - k))
+    if (aSubir === 0) continue
+    const porUnidad = new Map(previasLinea.map((o) => [o.unidad, o]))
+    /* Primero las que Shopify aún no había informado como preparadas (así, una
+       unidad que alguien desmarcó a mano en la app no vuelve a subir antes que
+       la que Shopify acaba de preparar); después, por número de unidad. */
+    const yaInformada = (m: MuebleMapeado) => (porUnidad.get(m.fila.unidad)?.shopify_preparado ? 1 : 0)
+    const candidatas = unidades
+      .filter((m) => {
+        const previa = porUnidad.get(m.fila.unidad)
+        return !previa || (previa.estado === 'por_fabricar' && !previa.listo)
+      })
+      .sort((a, b) => yaInformada(a) - yaInformada(b) || a.fila.unidad - b.fila.unidad)
+    for (const m of candidatas.slice(0, aSubir)) e.subir.push({ lineaId, unidad: m.fila.unidad, numero: m.fila.numero })
+  }
+  return e
+}
+
+/* Sin la bandera encendida, la columna shopify_preparado no se escribe. */
+function sinPreparado(fila: FilaOrden): FilaParaGuardar {
+  const copia: FilaParaGuardar = { ...fila }
+  delete copia.shopify_preparado
+  return copia
+}
+
+const LIMITE_LISTAS = 200
 
 export async function sincronizar(opts: OpcionesCorrida, deps: DepsCorrida): Promise<ResultadoCorrida> {
   const { almacen, shopify } = deps
@@ -609,6 +828,19 @@ export async function sincronizar(opts: OpcionesCorrida, deps: DepsCorrida): Pro
     revisar: [],
     advertencias: [],
     errores: [],
+    preparado: {
+      bandera_aplicar_preparado: false,
+      unidades_preparadas_en_shopify: 0,
+      pedidos_por_estado_de_preparacion: {},
+      subirian_a_fabricado: 0,
+      ya_avanzadas: 0,
+      desmarcados_en_shopify: 0,
+      lineas_con_cantidades_distintas: 0,
+      lineas_sin_dato_de_preparacion: 0,
+      subidas: 0,
+      numeros_que_subirian: [],
+    },
+    entrega: { retiros: 0, sin_direccion: 0, sin_telefono: 0, pedidos_retiro: [], pedidos_sin_direccion: [], pedidos_sin_telefono: [] },
   }
   if (opts.dry && opts.filas) r.filas = []
 
@@ -619,6 +851,7 @@ export async function sincronizar(opts: OpcionesCorrida, deps: DepsCorrida): Pro
     r.enCurso = true
     return r
   }
+  r.preparado.bandera_aplicar_preparado = config.aplicarPreparado
 
   let escritas = 0
   let avance: string | null = null
@@ -696,10 +929,12 @@ export async function sincronizar(opts: OpcionesCorrida, deps: DepsCorrida): Pro
       previasPorPedido.set(o.shopify_order_id, lista)
     }
 
-    const paraGuardar: FilaOrden[] = []
+    const paraGuardar: FilaParaGuardar[] = []
     const clientePorPedido = new Map<string, DatosCliente>()
     const aCancelar: { ids: string[]; cuando: string }[] = []
     const aRestaurar: string[] = []
+    /* Unidades a subir a "fabricado" por lo que dice Shopify (solo con la bandera). */
+    const aSubirPreparado: { claves: string[]; cuando: string | null }[] = []
     let canceladasPagina = 0
     let restauradasPagina = 0
 
@@ -735,8 +970,47 @@ export async function sincronizar(opts: OpcionesCorrida, deps: DepsCorrida): Pro
         const origen = p.sourceName || '(sin dato)'
         r.origenes[origen] = (r.origenes[origen] ?? 0) + 1
 
+        /* Cómo es la entrega (conteos por pedido, sin datos personales). */
+        const numeroPedido = mapeo.muebles[0].fila.pedido_numero
+        const anotar = (lista: string[]) => {
+          if (lista.length < LIMITE_LISTAS) lista.push(numeroPedido)
+        }
+        if (mapeo.entrega.retiro) {
+          r.entrega.retiros++
+          anotar(r.entrega.pedidos_retiro)
+        }
+        if (mapeo.entrega.sinDireccion) {
+          r.entrega.sin_direccion++
+          anotar(r.entrega.pedidos_sin_direccion)
+        }
+        if (mapeo.entrega.sinTelefono) {
+          r.entrega.sin_telefono++
+          anotar(r.entrega.pedidos_sin_telefono)
+        }
+
         const claves = new Set(mapeo.muebles.map((m) => clave(m.fila.shopify_line_item_id, m.fila.unidad)))
         const previasPorClave = new Map(previasDelPedido.map((o) => [clave(o.shopify_line_item_id, o.unidad), o]))
+
+        /* "Preparado" de Shopify. Se evalúa siempre (para el dry-run); solo se
+           aplica con la bandera encendida y fuera del modo dry. */
+        const evaluacion = evaluarPreparacion(mapeo.muebles, previasDelPedido)
+        const estadoPrep = p.displayFulfillmentStatus || '(sin dato)'
+        r.preparado.pedidos_por_estado_de_preparacion[estadoPrep] = (r.preparado.pedidos_por_estado_de_preparacion[estadoPrep] ?? 0) + 1
+        r.preparado.unidades_preparadas_en_shopify += evaluacion.unidadesPreparadas
+        r.preparado.subirian_a_fabricado += evaluacion.subir.length
+        for (const s of evaluacion.subir) if (r.preparado.numeros_que_subirian.length < 300) r.preparado.numeros_que_subirian.push(s.numero)
+        r.preparado.ya_avanzadas += evaluacion.yaAvanzadas
+        r.preparado.desmarcados_en_shopify += evaluacion.desmarcadas
+        r.preparado.lineas_con_cantidades_distintas += mapeo.preparado.lineasConCantidadesDistintas
+        r.preparado.lineas_sin_dato_de_preparacion += mapeo.preparado.lineasSinDato
+        if (config!.aplicarPreparado && evaluacion.desmarcadas) {
+          r.advertencias.push(
+            `Pedido ${p.name}: Shopify ya no tiene preparado(s) ${evaluacion.desmarcadas} mueble(s) que antes sí. La app no cambió nada: revísalos.`,
+          )
+        }
+        if (config!.aplicarPreparado && !opts.dry && evaluacion.subir.length) {
+          aSubirPreparado.push({ claves: evaluacion.subir.map((s) => clave(s.lineaId, s.unidad)), cuando: mapeo.preparadoEn })
+        }
 
         for (const m of mapeo.muebles) {
           const previa = previasPorClave.get(clave(m.fila.shopify_line_item_id, m.fila.unidad))
@@ -749,7 +1023,7 @@ export async function sincronizar(opts: OpcionesCorrida, deps: DepsCorrida): Pro
           } else {
             r.ordenes.nuevas++
           }
-          paraGuardar.push(m.fila)
+          paraGuardar.push(config!.aplicarPreparado ? m.fila : sinPreparado(m.fila))
           if (m.revisar.length) r.revisar.push({ numero: m.fila.numero, motivos: m.revisar })
           if (r.filas) {
             r.filas.push({
@@ -764,6 +1038,7 @@ export async function sincronizar(opts: OpcionesCorrida, deps: DepsCorrida): Pro
               comuna: m.fila.comuna,
               patas: m.fila.patas,
               origen_shopify: m.fila.origen_shopify,
+              preparado_shopify: m.fila.shopify_preparado,
             })
           }
         }
@@ -794,9 +1069,10 @@ export async function sincronizar(opts: OpcionesCorrida, deps: DepsCorrida): Pro
     if (opts.dry) return true
 
     try {
+      let idPorClave = new Map<string, string>()
       if (paraGuardar.length) {
         const guardadas = await almacen.guardarOrdenes(paraGuardar)
-        const idPorClave = new Map(guardadas.map((g) => [clave(g.shopify_line_item_id, g.unidad), g.id]))
+        idPorClave = new Map(guardadas.map((g) => [clave(g.shopify_line_item_id, g.unidad), g.id]))
         const ahoraIso = deps.ahora().toISOString()
         const filasCliente: FilaCliente[] = []
         for (const f of paraGuardar) {
@@ -809,12 +1085,115 @@ export async function sincronizar(opts: OpcionesCorrida, deps: DepsCorrida): Pro
       }
       for (const grupo of aCancelar) await almacen.marcarCanceladas(grupo.ids, grupo.cuando)
       if (aRestaurar.length) await almacen.restaurar(aRestaurar)
+      /* Lo último: subir a "fabricado" lo que Shopify tiene preparado. Después de
+         guardar (las unidades nuevas ya existen) y de restaurar. La base de datos
+         solo acepta las que siguen "por fabricar". */
+      for (const grupo of aSubirPreparado) {
+        const ids = grupo.claves.map((c) => idPorClave.get(c)).filter((id): id is string => Boolean(id))
+        if (ids.length) r.preparado.subidas += await almacen.marcarFabricadas(ids, grupo.cuando)
+      }
     } catch (err) {
       r.errores.push(err instanceof Error ? err.message : 'Error al guardar en la base de datos.')
       return false
     }
     return true
   }
+}
+
+
+// ------------------------------------------------------------
+// 6b. Diagnóstico de la forma de entrega (?diag=1280,1285)
+// ------------------------------------------------------------
+// Sirve para averiguar QUÉ campo de Shopify identifica un retiro en tienda.
+// Solo lee, nunca escribe, y la respuesta no lleva datos personales: la calle,
+// el teléfono y la nota se leen únicamente para saber si están o no.
+export const DIAGNOSTICO_MAXIMO = 20
+const RETIRO_EN_NOTA = /retiro|retira|pick-?up|showroom|tienda/i
+
+export interface DiagPedido {
+  pedido: string
+  encontrado: boolean
+  origen_shopify?: string | null
+  estado_de_preparacion?: string | null
+  linea_de_envio?: { titulo: string | null; codigo: string | null; origen: string | null; categoria_de_entrega: string | null } | null
+  tiene_direccion_de_envio?: boolean
+  direccion_con_calle?: boolean
+  tiene_telefono?: boolean
+  etiquetas?: string[]
+  atributos_del_pedido?: string[]
+  la_nota_menciona_retiro?: boolean
+  lineas?: number
+  lineas_que_requieren_envio?: number
+  /* Lo que hace HOY la regla: solo mira si el título de la línea de envío dice "retiro". */
+  regla_actual_detecta_retiro?: boolean
+  comuna_que_queda_hoy?: string
+  /* El método de entrega (retiro, envío...) vive en las órdenes de cumplimiento y
+     puede exigir un permiso que la app no tenga. */
+  metodo_de_entrega?:
+    | { disponible: true; ordenes_de_cumplimiento: { estado: string | null; tipo_de_metodo: string | null; ubicacion: string | null }[] }
+    | { disponible: false; motivo: string }
+}
+
+export async function diagnosticar(nombres: string[], shopify: ClienteShopify): Promise<DiagPedido[]> {
+  /* Busca un pedido por su número; prueba "#1280" y luego "1280". */
+  const buscar = async (consultaGql: string, nombre: string) => {
+    for (const q of [`name:#${nombre}`, `name:${nombre}`]) {
+      const datos = await shopify.consultar(consultaGql, { q })
+      const nodo = ((datos?.orders?.nodes ?? []) as any[]).find((n) => String(n?.name).replace('#', '') === nombre) // eslint-disable-line @typescript-eslint/no-explicit-any
+      if (nodo) return nodo
+    }
+    return null
+  }
+
+  const salida: DiagPedido[] = []
+  for (const nombre of nombres) {
+    const n = await buscar(QUERY_DIAGNOSTICO, nombre)
+    if (!n) {
+      salida.push({ pedido: nombre, encontrado: false })
+      continue
+    }
+    const linea = n.shippingLine
+    const retiro = Boolean(linea?.title && /retiro/i.test(linea.title))
+    const d: DiagPedido = {
+      pedido: nombre,
+      encontrado: true,
+      origen_shopify: n.sourceName ?? null,
+      estado_de_preparacion: n.displayFulfillmentStatus ?? null,
+      linea_de_envio: linea
+        ? { titulo: linea.title ?? null, codigo: linea.code ?? null, origen: linea.source ?? null, categoria_de_entrega: linea.deliveryCategory ?? null }
+        : null,
+      tiene_direccion_de_envio: Boolean(n.shippingAddress),
+      direccion_con_calle: Boolean(n.shippingAddress?.address1?.trim()),
+      tiene_telefono: Boolean(n.shippingAddress?.phone?.trim()),
+      etiquetas: ((n.tags ?? []) as string[]).slice(0, 10).map((t) => String(t).slice(0, 40)),
+      atributos_del_pedido: ((n.customAttributes ?? []) as { key: string }[]).slice(0, 10).map((a) => String(a.key).slice(0, 40)),
+      la_nota_menciona_retiro: RETIRO_EN_NOTA.test(n.note ?? ''),
+      lineas: (n.lineItems?.nodes ?? []).length,
+      lineas_que_requieren_envio: ((n.lineItems?.nodes ?? []) as { requiresShipping?: boolean }[]).filter((l) => l.requiresShipping).length,
+      regla_actual_detecta_retiro: retiro,
+      comuna_que_queda_hoy: retiro ? 'RETIRO TIENDA' : !n.shippingAddress ? SIN_DIRECCION : '(la comuna de la dirección)',
+    }
+    try {
+      const e = await buscar(QUERY_DIAGNOSTICO_ENTREGA, nombre)
+      d.metodo_de_entrega = e
+        ? {
+            disponible: true,
+            ordenes_de_cumplimiento: ((e.fulfillmentOrders?.nodes ?? []) as any[]).map((f) => ({ // eslint-disable-line @typescript-eslint/no-explicit-any
+              estado: f.status ?? null,
+              tipo_de_metodo: f.deliveryMethod?.methodType ?? null,
+              ubicacion: f.assignedLocation?.name ?? null,
+            })),
+          }
+        : { disponible: false, motivo: 'Shopify no devolvió el pedido en esta segunda consulta.' }
+    } catch (err) {
+      /* Lo esperable: la app no tiene el permiso de órdenes de cumplimiento. No
+         es un fallo del diagnóstico, es parte de la respuesta. */
+      if (!(err instanceof ErrorShopify)) throw err
+      d.metodo_de_entrega = { disponible: false, motivo: err.message.slice(0, 300) }
+    }
+    salida.push(d)
+  }
+  return salida
 }
 
 
@@ -916,6 +1295,19 @@ export async function manejar(req: Request, deps: DepsHttp): Promise<Response> {
     if (desde !== null && (!/^\d{4}-\d{2}-\d{2}$/.test(desde) || Number.isNaN(Date.parse(desde)))) {
       return responder({ error: 'El parámetro "desde" debe ser una fecha AAAA-MM-DD.' }, 400)
     }
+    /* ?diag=1280,1285: diagnóstico de la forma de entrega de esos pedidos. */
+    let diag: string[] | null = null
+    const diagParam = url.searchParams.get('diag')
+    if (diagParam !== null) {
+      const lista = diagParam.split(',').map((s) => s.trim())
+      if (lista.length === 0 || lista.length > DIAGNOSTICO_MAXIMO || lista.some((n) => !/^\d{1,8}$/.test(n))) {
+        return responder(
+          { error: `El parámetro "diag" debe ser una lista de hasta ${DIAGNOSTICO_MAXIMO} números de pedido separados por comas, por ejemplo ?diag=1280,1285.` },
+          400,
+        )
+      }
+      diag = [...new Set(lista)]
+    }
 
     // ----------------------------------------------------------
     // 3) Configuración de Shopify
@@ -928,7 +1320,16 @@ export async function manejar(req: Request, deps: DepsHttp): Promise<Response> {
     if (!tokenShopify) return responder({ error: 'Falta el secreto SHOPIFY_ACCESS_TOKEN.' }, 500)
 
     // ----------------------------------------------------------
-    // 4) Sincronizar
+    // 4) Diagnóstico (solo lectura: ni siquiera se abre la base de datos)
+    // ----------------------------------------------------------
+    if (diag) {
+      const resultadoDiag = await diagnosticar(diag, deps.crearShopify(shop, tokenShopify))
+      console.log(JSON.stringify({ evento: 'sincronizar-shopify', quien, diag: diag.length }))
+      return responder({ ok: true, dry: true, diag: resultadoDiag })
+    }
+
+    // ----------------------------------------------------------
+    // 5) Sincronizar
     // ----------------------------------------------------------
     const resultado = await sincronizar(
       { dry, filas, desde },
