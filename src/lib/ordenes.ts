@@ -1,21 +1,8 @@
 import type { DatosClienteOrden, EstadoOrden, Etapa, OrdenFabricacion, OrigenOrden } from '../types'
+import { ESTADO_ORDEN_LABEL, ORDEN_ESTADOS_ORDEN, ORDEN_ORIGENES, ORIGEN_LABEL } from './etiquetas'
 import { supabase } from './supabaseClient'
 
-export const ORIGEN_LABEL: Record<OrigenOrden, string> = {
-  tienda_en_linea: 'Tienda en línea',
-  manual_shopify: 'Manual en Shopify',
-}
-
-export const ORDEN_ORIGENES: OrigenOrden[] = ['tienda_en_linea', 'manual_shopify']
-
-export const ESTADO_ORDEN_LABEL: Record<EstadoOrden, string> = {
-  por_fabricar: 'Por fabricar',
-  fabricado: 'Fabricado',
-  en_despacho: 'En despacho',
-  entregado: 'Entregado',
-}
-
-export const ORDEN_ESTADOS_ORDEN: EstadoOrden[] = ['por_fabricar', 'fabricado', 'en_despacho', 'entregado']
+export { ESTADO_ORDEN_LABEL, ORDEN_ESTADOS_ORDEN, ORDEN_ORIGENES, ORIGEN_LABEL }
 
 /* Réplica de `avanzar_estado_orden` (migración 0012) para decidir qué botón
    mostrar. "Por fabricar" no avanza con botón: sale de ahí marcando LISTO.
@@ -91,7 +78,7 @@ export function fechaLocal(fecha: Date) {
 const COLUMNAS_ORDEN =
   'id,numero,pedido_numero,shopify_order_id,tipo,modelo,orientacion,cm,color,tela,region,comuna,comuna_revisar,patas,' +
   'fecha_pedido,titulo_shopify,es_adicional,etapa_b,etapa_i,etapa_a,etapa_c,listo,listo_en,estado,cancelado_en,notas_produccion,' +
-  'origen,origen_shopify,despachado_en,actualizado_en'
+  'origen,origen_shopify,despachado_en,actualizado_en,pedido_creado_en'
 
 interface OrdenRaw {
   id: string
@@ -124,6 +111,7 @@ interface OrdenRaw {
   origen_shopify: string | null
   despachado_en: string | null
   actualizado_en: string
+  pedido_creado_en: string
 }
 
 function aplanarOrden(raw: OrdenRaw): OrdenFabricacion {
@@ -158,6 +146,7 @@ function aplanarOrden(raw: OrdenRaw): OrdenFabricacion {
     origenShopify: raw.origen_shopify,
     despachadoEn: raw.despachado_en,
     actualizadoEn: raw.actualizado_en,
+    pedidoCreadoEn: raw.pedido_creado_en,
   }
 }
 
@@ -208,11 +197,13 @@ export function filtrosActivos(f: FiltrosOrdenes) {
   ).length
 }
 
-/* Nunca trae datos personales del cliente: esos están en otra tabla. Las
-   órdenes canceladas en Shopify no se listan. */
-export async function listarOrdenes(filtros: FiltrosOrdenes): Promise<{ ordenes: OrdenFabricacion[]; limitado: boolean }> {
-  let consulta = supabase.from('ordenes_fabricacion').select(COLUMNAS_ORDEN).is('cancelado_en', null)
-
+/* Los filtros de la pantalla, aplicados a una consulta de ordenes_fabricacion.
+   Los usan la lista y la exportación a Excel, para que el archivo contenga
+   exactamente lo que se está viendo. Las canceladas nunca se incluyen. */
+function aplicarFiltros<T>(consultaInicial: T, filtros: FiltrosOrdenes): T {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let consulta: any = consultaInicial
+  consulta = consulta.is('cancelado_en', null)
   if (!filtros.incluirAdicionales) consulta = consulta.eq('es_adicional', false)
   if (filtros.estado !== 'todos') consulta = consulta.eq('estado', filtros.estado)
   if (filtros.desde) consulta = consulta.gte('fecha_pedido', filtros.desde)
@@ -221,6 +212,13 @@ export async function listarOrdenes(filtros: FiltrosOrdenes): Promise<{ ordenes:
   if (filtros.modelo) consulta = consulta.eq('modelo', filtros.modelo)
   if (filtros.tela) consulta = consulta.eq('tela', filtros.tela)
   if (filtros.origen !== 'todos') consulta = consulta.eq('origen', filtros.origen)
+  return consulta as T
+}
+
+/* Nunca trae datos personales del cliente: esos están en otra tabla. Las
+   órdenes canceladas en Shopify no se listan. */
+export async function listarOrdenes(filtros: FiltrosOrdenes): Promise<{ ordenes: OrdenFabricacion[]; limitado: boolean }> {
+  const consulta = aplicarFiltros(supabase.from('ordenes_fabricacion').select(COLUMNAS_ORDEN), filtros)
 
   const { data, error } = await consulta
     .order('fecha_pedido', { ascending: false })
@@ -230,6 +228,45 @@ export async function listarOrdenes(filtros: FiltrosOrdenes): Promise<{ ordenes:
   if (error) throw new Error(error.message)
   const filas = ((data ?? []) as unknown as OrdenRaw[]).map(aplanarOrden)
   return { ordenes: ordenarOrdenes(filas), limitado: filas.length >= LIMITE_ORDENES }
+}
+
+/* Máximo de filas que se exporta a Excel de una vez. */
+export const LIMITE_EXPORTACION = 5000
+
+/* Todas las órdenes que coinciden con los filtros (no solo las 500 de la
+   lista), de la más antigua a la más reciente, para el archivo de Excel. Se
+   piden de a 1000 porque la API entrega como máximo eso por consulta. */
+export async function listarOrdenesParaExportar(filtros: FiltrosOrdenes): Promise<OrdenFabricacion[]> {
+  const PAGINA = 1000
+  const filas: OrdenFabricacion[] = []
+  for (let desde = 0; ; desde += PAGINA) {
+    const consulta = aplicarFiltros(supabase.from('ordenes_fabricacion').select(COLUMNAS_ORDEN), filtros)
+      .order('pedido_creado_en', { ascending: true })
+      .order('pedido_numero', { ascending: true })
+      .order('id', { ascending: true })
+      .range(desde, desde + PAGINA - 1)
+    const { data, error } = await consulta
+    if (error) throw new Error(error.message)
+    const lote = ((data ?? []) as unknown as OrdenRaw[]).map(aplanarOrden)
+    filas.push(...lote)
+    if (filas.length > LIMITE_EXPORTACION) {
+      throw new Error(`Hay más de ${LIMITE_EXPORTACION} órdenes con estos filtros. Acota las fechas e inténtalo de nuevo.`)
+    }
+    if (lote.length < PAGINA) break
+  }
+  return filas
+}
+
+/* Solo el NOMBRE del cliente de cada orden. Nunca se pide la nota original
+   (con RUT), el teléfono ni la dirección: el Excel no los lleva. */
+export async function obtenerNombresClientes(ordenIds: string[]): Promise<Map<string, string>> {
+  const nombres = new Map<string, string>()
+  for (let i = 0; i < ordenIds.length; i += 100) {
+    const { data, error } = await supabase.from('ordenes_fabricacion_cliente').select('orden_id,cliente').in('orden_id', ordenIds.slice(i, i + 100))
+    if (error) throw new Error(error.message)
+    for (const f of (data ?? []) as { orden_id: string; cliente: string | null }[]) if (f.cliente) nombres.set(f.orden_id, f.cliente)
+  }
+  return nombres
 }
 
 /* Las órdenes más recientes (solo muebles, sin adicionales ni canceladas), para

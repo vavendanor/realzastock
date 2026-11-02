@@ -107,6 +107,8 @@ export interface OrdenFabricacion {
      la migración 0013 no lo tienen. */
   despachadoEn: string | null
   actualizadoEn: string
+  /* Momento exacto del pedido en Shopify (instante UTC). */
+  pedidoCreadoEn: string
 }
 
 export interface DatosClienteOrden {

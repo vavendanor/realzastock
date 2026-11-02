@@ -1,7 +1,9 @@
-import { Factory, FilterX, SlidersHorizontal } from 'lucide-react'
+import { Factory, FileDown, FilterX, SlidersHorizontal } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useAuth } from '../hooks/useAuth'
 import { useEsEscritorio } from '../hooks/useMediaQuery'
+import { exportarPedidosAExcel } from '../lib/exportarPedidos'
 import {
   aplicarEtapaLocal,
   contarOrdenesPorEstado,
@@ -117,6 +119,9 @@ export function ProduccionLista({ recargaToken }: Props) {
   const [opciones, setOpciones] = useState<OpcionesFiltro>({ comunas: [], modelos: [], telas: [] })
   const [pendientes, setPendientes] = useState<ReadonlySet<string>>(new Set())
   const [filtrosAbiertos, setFiltrosAbiertos] = useState(false)
+  const [exportando, setExportando] = useState(false)
+  const [avisoExportacion, setAvisoExportacion] = useState<{ tipo: 'ok' | 'error'; texto: string } | null>(null)
+  const esAdministrador = useAuth().rol === 'administrador'
   /* Para ignorar respuestas viejas si el usuario cambia filtros rápido. */
   const peticion = useRef(0)
 
@@ -340,8 +345,39 @@ export function ProduccionLista({ recargaToken }: Props) {
     </>
   )
 
+  /* Exportar a Excel: solo para el administrador. Exporta lo que coincide con los
+     filtros puestos (no solo las 500 filas de la lista). Es una restricción de
+     la pantalla, no de la base de datos. */
+  const exportar = async () => {
+    setExportando(true)
+    setAvisoExportacion(null)
+    try {
+      const r = await exportarPedidosAExcel(filtros)
+      setAvisoExportacion({ tipo: 'ok', texto: `Se descargó ${r.archivo} con ${r.filas} ${r.filas === 1 ? 'fila' : 'filas'}.` })
+    } catch (err) {
+      setAvisoExportacion({ tipo: 'error', texto: mensajeError(err, 'No se pudo generar el archivo.') })
+    } finally {
+      setExportando(false)
+    }
+  }
+  const cuantasFilas = limitado ? `${LIMITE_ORDENES}+` : String(ordenes.length)
+  const botonExportar = esAdministrador ? (
+    <Button
+      size={esEscritorio ? 'sm' : 'md'}
+      variant="secondary"
+      fullWidth={!esEscritorio}
+      iconLeft={<FileDown size={15} />}
+      disabled={cargando || exportando || fechasInvertidas || ordenes.length === 0}
+      onClick={() => void exportar()}
+    >
+      {exportando ? 'Generando Excel...' : `Exportar a Excel (${cuantasFilas})`}
+    </Button>
+  ) : null
+
   const tarjetaFiltros = esEscritorio ? (
-    <Card title="Filtros">{camposFiltro}</Card>
+    <Card title="Filtros" actions={botonExportar}>
+      {camposFiltro}
+    </Card>
   ) : (
     <Card padding="var(--space-4)">
       <Button
@@ -354,6 +390,7 @@ export function ProduccionLista({ recargaToken }: Props) {
         {nFiltros ? `Filtros (${nFiltros} activos)` : 'Filtros'}
       </Button>
       {filtrosAbiertos && <div style={{ marginTop: 'var(--space-4)' }}>{camposFiltro}</div>}
+      {botonExportar && <div style={{ marginTop: 'var(--space-3)' }}>{botonExportar}</div>}
     </Card>
   )
 
@@ -486,6 +523,16 @@ export function ProduccionLista({ recargaToken }: Props) {
         <Card padding="var(--space-4) var(--space-6)" style={{ borderColor: 'var(--state-danger)' }}>
           <span role="alert" style={{ font: 'var(--type-body)', color: 'var(--state-danger)' }}>
             {errorEtapa}
+          </span>
+        </Card>
+      )}
+      {avisoExportacion && (
+        <Card padding="var(--space-4) var(--space-6)" style={{ borderColor: avisoExportacion.tipo === 'ok' ? 'var(--state-success)' : 'var(--state-danger)' }}>
+          <span
+            role={avisoExportacion.tipo === 'error' ? 'alert' : 'status'}
+            style={{ font: 'var(--type-body)', color: avisoExportacion.tipo === 'ok' ? 'var(--text-strong)' : 'var(--state-danger)' }}
+          >
+            {avisoExportacion.texto}
           </span>
         </Card>
       )}
