@@ -1,8 +1,10 @@
 import { RotateCw } from 'lucide-react'
 import { useState } from 'react'
 import { ProduccionLista } from '../components/ProduccionLista'
+import { SincronizacionShopify } from '../components/SincronizacionShopify'
 import { Shell } from '../components/layout/Shell'
 import { Button } from '../components/ui/Button'
+import { useAuth } from '../hooks/useAuth'
 import { useEsEscritorio } from '../hooks/useMediaQuery'
 
 /* Pedidos de Shopify convertidos en órdenes de fabricación: los de la tienda
@@ -11,6 +13,7 @@ import { useEsEscritorio } from '../hooks/useMediaQuery'
    llegan hasta aquí (ruta protegida y políticas de la base de datos). */
 export function Pedidos() {
   const esEscritorio = useEsEscritorio()
+  const { rol } = useAuth()
   const [recargaToken, setRecargaToken] = useState(0)
 
   return (
@@ -23,6 +26,8 @@ export function Pedidos() {
         </Button>
       }
     >
+      {/* Solo el administrador: la lectura de sync_shopify y la Edge Function también lo exigen. */}
+      {rol === 'administrador' && <SincronizacionShopify alTerminar={() => setRecargaToken((n) => n + 1)} />}
       <ProduccionLista recargaToken={recargaToken} />
     </Shell>
   )
