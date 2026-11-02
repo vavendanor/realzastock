@@ -25,6 +25,7 @@ import {
   type FiltrosOrdenes,
   type OpcionesFiltro,
 } from '../lib/ordenes'
+import { faltaColorTela, mencionaPatas } from '../lib/avisosOrden'
 import type { Etapa, OrdenFabricacion } from '../types'
 import { CasillaEtapa } from './CasillaEtapa'
 import { Button } from './ui/Button'
@@ -379,6 +380,7 @@ export function ProduccionLista({ recargaToken }: Props) {
         <div style={{ whiteSpace: 'normal', minWidth: 140, maxWidth: 190 }}>
           <div style={{ font: 'var(--type-body-strong)', color: 'var(--text-strong)' }}>{o.modelo ?? '—'}</div>
           {subtitulo(o) && <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{subtitulo(o)}</div>}
+          {mencionaPatas(o) && <div style={{ marginTop: 4 }}>{chip('Patas en la nota', 'aviso')}</div>}
           {o.notasProduccion && (
             <div
               title={o.notasProduccion}
@@ -407,6 +409,7 @@ export function ProduccionLista({ recargaToken }: Props) {
           <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>
             {[o.color, o.tela].filter(Boolean).join(' · ') || '—'}
           </div>
+          {faltaColorTela(o) && <div style={{ marginTop: 4 }}>{chip(`Falta ${faltaColorTela(o)}`, 'aviso')}</div>}
         </div>
       ),
     },
@@ -550,6 +553,12 @@ export function ProduccionLista({ recargaToken }: Props) {
                 <div style={{ font: 'var(--type-caption)', color: 'var(--text-body)', marginTop: 'var(--space-2)' }}>
                   {[o.cm, o.color, o.tela].filter(Boolean).join(' · ') || '—'}
                 </div>
+                {(faltaColorTela(o) || mencionaPatas(o)) && (
+                  <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', marginTop: 'var(--space-2)' }}>
+                    {faltaColorTela(o) && chip(`Falta ${faltaColorTela(o)}`, 'aviso')}
+                    {mencionaPatas(o) && chip('Patas en la nota', 'aviso')}
+                  </div>
+                )}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap', font: 'var(--type-caption)', color: 'var(--text-muted)' }}>
                   <span>
                     {o.comuna ?? '—'} · {formatearFechaPedido(o.fechaPedido)}

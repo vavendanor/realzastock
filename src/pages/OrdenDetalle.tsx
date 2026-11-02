@@ -10,6 +10,7 @@ import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
 import { EstadoOrdenBadge } from '../components/ui/EstadoOrdenBadge'
 import { useEsEscritorio } from '../hooks/useMediaQuery'
+import { faltaColorTela, mencionaPatas } from '../lib/avisosOrden'
 import { imprimirConTitulo } from '../lib/comprobante'
 import { formatearFechaHora, formatearTelefono, normalizarTelefono, telefonoValido } from '../lib/format'
 import {
@@ -92,6 +93,8 @@ export function OrdenDetalle() {
   const cancelada = orden.canceladoEn !== null
   const bloqueada = etapasBloqueadas(orden)
   const siguiente = ESTADO_ORDEN_SIGUIENTE[orden.estado]
+  const faltante = faltaColorTela(orden)
+  const patasEnNota = mencionaPatas(orden)
 
   /* El comprobante es por pedido: lista los muebles del pedido que salen a
      despacho (en despacho o entregados). Se ofrece cuando esta orden ya salió. */
@@ -242,6 +245,32 @@ export function OrdenDetalle() {
         {fila('Patas', orden.patas)}
         {orden.tituloShopify && fila('Producto en Shopify', orden.tituloShopify)}
       </div>
+      {(faltante || patasEnNota) && (
+        <div
+          role="note"
+          style={{
+            marginTop: 'var(--space-4)',
+            padding: 'var(--space-3) var(--space-4)',
+            border: '1px solid var(--state-warning)',
+            borderRadius: 'var(--radius-sm)',
+            font: 'var(--type-body)',
+            fontSize: 'var(--text-body-sm)',
+            color: 'var(--tinta-700)',
+          }}
+        >
+          {faltante && (
+            <div>
+              <strong>Falta {faltante}.</strong> Este pedido no trae {faltante === 'color y tela' ? 'esos datos' : 'ese dato'} desde Shopify: revisa las notas
+              del pedido.
+            </div>
+          )}
+          {patasEnNota && (
+            <div>
+              <strong>Las notas nombran las patas.</strong> El campo "Patas" dice PREDETERMINADAS: confirma cuáles van antes de fabricar.
+            </div>
+          )}
+        </div>
+      )}
       {orden.notasProduccion && (
         <div
           style={{
