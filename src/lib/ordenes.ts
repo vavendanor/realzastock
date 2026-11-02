@@ -56,7 +56,7 @@ export function aplicarEtapaLocal(orden: OrdenFabricacion, etapa: Etapa, valor: 
     case 'c':
       return { ...orden, etapaC: valor }
     case 'listo':
-      return { ...orden, listo: valor, estado: valor ? 'fabricado' : 'por_fabricar' }
+      return { ...orden, listo: valor, estado: valor ? 'fabricado' : 'por_fabricar', listoOrigen: valor ? 'app' : null }
   }
 }
 
@@ -78,7 +78,7 @@ export function fechaLocal(fecha: Date) {
 const COLUMNAS_ORDEN =
   'id,numero,pedido_numero,shopify_order_id,tipo,modelo,orientacion,cm,color,tela,region,comuna,comuna_revisar,patas,' +
   'fecha_pedido,titulo_shopify,es_adicional,etapa_b,etapa_i,etapa_a,etapa_c,listo,listo_en,estado,cancelado_en,notas_produccion,' +
-  'origen,origen_shopify,despachado_en,actualizado_en,pedido_creado_en'
+  'origen,origen_shopify,despachado_en,actualizado_en,pedido_creado_en,shopify_preparado,listo_origen'
 
 interface OrdenRaw {
   id: string
@@ -112,6 +112,8 @@ interface OrdenRaw {
   despachado_en: string | null
   actualizado_en: string
   pedido_creado_en: string
+  shopify_preparado: boolean
+  listo_origen: 'app' | 'shopify' | null
 }
 
 function aplanarOrden(raw: OrdenRaw): OrdenFabricacion {
@@ -147,6 +149,8 @@ function aplanarOrden(raw: OrdenRaw): OrdenFabricacion {
     despachadoEn: raw.despachado_en,
     actualizadoEn: raw.actualizado_en,
     pedidoCreadoEn: raw.pedido_creado_en,
+    shopifyPreparado: raw.shopify_preparado,
+    listoOrigen: raw.listo_origen,
   }
 }
 

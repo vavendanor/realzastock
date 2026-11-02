@@ -29,3 +29,17 @@ export function mencionaPatas(o: Pick<OrdenFabricacion, 'esAdicional' | 'notasPr
   if (o.patas && o.patas.trim().toUpperCase() !== 'PREDETERMINADAS') return false
   return PATAS.test(o.notasProduccion ?? '')
 }
+
+/* "Preparado" de Shopify. Cuando la sincronización sube una unidad a
+   "fabricado" porque en Shopify el pedido está preparado, queda marcada como
+   LISTO por Shopify. */
+export function preparadoPorShopify(o: Pick<OrdenFabricacion, 'listoOrigen'>): boolean {
+  return o.listoOrigen === 'shopify'
+}
+
+/* La app NUNCA baja un estado porque Shopify desmarque: solo avisa. Se nota
+   cuando la unidad la subió Shopify, sigue "fabricado" y Shopify ya no la
+   tiene preparada. */
+export function shopifyDesmarco(o: Pick<OrdenFabricacion, 'listoOrigen' | 'estado' | 'shopifyPreparado'>): boolean {
+  return o.listoOrigen === 'shopify' && o.estado === 'fabricado' && !o.shopifyPreparado
+}

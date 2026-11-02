@@ -10,7 +10,7 @@ import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
 import { EstadoOrdenBadge } from '../components/ui/EstadoOrdenBadge'
 import { useEsEscritorio } from '../hooks/useMediaQuery'
-import { faltaColorTela, mencionaPatas } from '../lib/avisosOrden'
+import { faltaColorTela, mencionaPatas, preparadoPorShopify, shopifyDesmarco } from '../lib/avisosOrden'
 import { imprimirConTitulo } from '../lib/comprobante'
 import { formatearFechaHora, formatearTelefono, normalizarTelefono, telefonoValido } from '../lib/format'
 import {
@@ -95,6 +95,7 @@ export function OrdenDetalle() {
   const siguiente = ESTADO_ORDEN_SIGUIENTE[orden.estado]
   const faltante = faltaColorTela(orden)
   const patasEnNota = mencionaPatas(orden)
+  const desmarcadoEnShopify = shopifyDesmarco(orden)
 
   /* El comprobante es por pedido: lista los muebles del pedido que salen a
      despacho (en despacho o entregados). Se ofrece cuando esta orden ya salió. */
@@ -189,7 +190,8 @@ export function OrdenDetalle() {
 
       {orden.listoEn && (
         <p style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', marginBottom: 'var(--space-4)' }}>
-          Marcado LISTO el {formatearFechaHora(orden.listoEn)}.
+          Marcado LISTO el {formatearFechaHora(orden.listoEn)}
+          {preparadoPorShopify(orden) ? ' porque en Shopify el pedido está Preparado.' : ' desde la app.'}
         </p>
       )}
 
@@ -245,7 +247,7 @@ export function OrdenDetalle() {
         {fila('Patas', orden.patas)}
         {orden.tituloShopify && fila('Producto en Shopify', orden.tituloShopify)}
       </div>
-      {(faltante || patasEnNota) && (
+      {(faltante || patasEnNota || desmarcadoEnShopify) && (
         <div
           role="note"
           style={{
@@ -267,6 +269,12 @@ export function OrdenDetalle() {
           {patasEnNota && (
             <div>
               <strong>Las notas nombran las patas.</strong> El campo "Patas" dice PREDETERMINADAS: confirma cuáles van antes de fabricar.
+            </div>
+          )}
+          {desmarcadoEnShopify && (
+            <div>
+              <strong>Shopify ya no lo tiene Preparado.</strong> La app lo había marcado LISTO porque Shopify lo tenía preparado. No se cambió nada: revisa si
+              corresponde quitar LISTO.
             </div>
           )}
         </div>

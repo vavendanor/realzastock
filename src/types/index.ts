@@ -109,6 +109,11 @@ export interface OrdenFabricacion {
   actualizadoEn: string
   /* Momento exacto del pedido en Shopify (instante UTC). */
   pedidoCreadoEn: string
+  /* Lo último que dijo Shopify de esta unidad ("Preparado"). Solo se guarda
+     con la bandera aplicar_preparado encendida. */
+  shopifyPreparado: boolean
+  /* Quién marcó LISTO: la app o la sincronización con Shopify. Null si no está LISTO. */
+  listoOrigen: 'app' | 'shopify' | null
 }
 
 export interface DatosClienteOrden {

@@ -27,7 +27,7 @@ import {
   type FiltrosOrdenes,
   type OpcionesFiltro,
 } from '../lib/ordenes'
-import { faltaColorTela, mencionaPatas } from '../lib/avisosOrden'
+import { faltaColorTela, mencionaPatas, preparadoPorShopify, shopifyDesmarco } from '../lib/avisosOrden'
 import type { Etapa, OrdenFabricacion } from '../types'
 import { CasillaEtapa } from './CasillaEtapa'
 import { Button } from './ui/Button'
@@ -405,6 +405,8 @@ export function ProduccionLista({ recargaToken }: Props) {
             {o.numero}
           </span>
           <EstadoOrdenBadge estado={o.estado} />
+          {preparadoPorShopify(o) && chip('Preparado en Shopify', 'neutro')}
+          {shopifyDesmarco(o) && chip('Shopify ya no lo tiene preparado', 'aviso')}
           {o.origen === 'manual_shopify' && chip('Manual', 'neutro')}
           {o.esAdicional && chip('Adicional', 'neutro')}
         </div>
@@ -597,6 +599,12 @@ export function ProduccionLista({ recargaToken }: Props) {
                   </div>
                   <EstadoOrdenBadge estado={o.estado} />
                 </div>
+                {(preparadoPorShopify(o) || shopifyDesmarco(o)) && (
+                  <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', marginTop: 'var(--space-2)' }}>
+                    {preparadoPorShopify(o) && chip('Preparado en Shopify', 'neutro')}
+                    {shopifyDesmarco(o) && chip('Shopify ya no lo tiene preparado', 'aviso')}
+                  </div>
+                )}
                 <div style={{ font: 'var(--type-caption)', color: 'var(--text-body)', marginTop: 'var(--space-2)' }}>
                   {[o.cm, o.color, o.tela].filter(Boolean).join(' · ') || '—'}
                 </div>
