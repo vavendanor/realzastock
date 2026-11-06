@@ -36,6 +36,16 @@
 //              dirección o teléfono, método de entrega si el permiso lo deja
 //              leer) SIN datos personales. Implica dry: nunca escribe nada.
 //
+// Retiro en la sala de ventas:
+//   * Si el título de la línea de envío contiene "retiro" o "sala de ventas"
+//     (sin importar mayúsculas; en la tienda es "Realza Hogar | Sala de
+//     ventas"), el pedido es un RETIRO: comuna "RETIRO TIENDA", región
+//     "Metropolitana de Santiago" y sin dirección de despacho.
+//   * Reprocesar (?desde=2026-10-01) corrige los pedidos ya cargados: solo
+//     cambian la comuna y la región; las etapas y el estado no se tocan.
+//   * El dry-run informa cuántos retiros hay, qué títulos de envío se tomaron
+//     como retiro y cuántos de ellos traen además una dirección.
+//
 // "Preparado" de Shopify (migración 0015):
 //   * En Shopify, "Preparado" (fulfilled) equivale a LISTO / "fabricado". Se
 //     lee por LÍNEA (cantidad preparada de cada línea), no por pedido, para
@@ -82,6 +92,14 @@ const PEDIDOS_POR_PAGINA = 15
 const LINEAS_POR_PEDIDO = 25
 const MODELOS = ['VALENCIA', 'OSORNO', 'CHILLAN', 'FRUTILLAR', 'VILLARRICA', 'MENDOZA']
 const SIN_DIRECCION = 'NO SE PROPORCIONÓ DIRECCIÓN DE ENVÍO'
+/* Retiro en la sala de ventas: la línea de envío de esos pedidos dice
+   "Realza Hogar | Sala de ventas" (o "Retiro ..."), sin importar mayúsculas.
+   No se despachan, así que no llevan dirección: la comuna queda en "RETIRO
+   TIENDA" y la región en la de la sala (como la guarda la base: su nombre
+   oficial; la planilla y el Excel la muestran como METROPOLITANA). */
+export const ES_RETIRO = /retiro|sala de ventas/i
+const COMUNA_RETIRO = 'RETIRO TIENDA'
+const REGION_RETIRO = 'Metropolitana de Santiago'
 /* Líneas que no van a fabricación (el cobro del despacho). */
 const IGNORAR = /^despacho$/i
 const TIPOS_MUEBLE = ['SOFA', 'SOFA EN L', 'SOFA CAMA', 'POLTRONA']
@@ -250,7 +268,15 @@ export interface ResultadoMapeo {
   muebles: MuebleMapeado[]
   cliente: DatosCliente
   /* Cómo es la entrega, para los conteos del dry-run (sin datos personales). */
-  entrega: { retiro: boolean; sinDireccion: boolean; sinTelefono: boolean }
+  entrega: {
+    retiro: boolean
+    /* Título de la línea de envío que se tomó como retiro (no es un dato personal). */
+    tituloRetiro: string | null
+    /* Un retiro que además trae una dirección de envío: conviene mirarlo. */
+    retiroConDireccion: boolean
+    sinDireccion: boolean
+    sinTelefono: boolean
+  }
   /* Calidad de lo que informó Shopify sobre la preparación. */
   preparado: {
     /* Líneas donde lo pedido y lo vigente no coinciden (la cantidad
@@ -274,12 +300,13 @@ export function unidadesPreparadas(li: Pick<LineaShopify, 'quantity' | 'currentQ
 }
 
 export function mapearPedido(o: PedidoShopify): ResultadoMapeo {
-  const retiro = Boolean(o.shippingLine?.title && /retiro/i.test(o.shippingLine.title))
+  const tituloEnvio = o.shippingLine?.title?.trim() || null
+  const retiro = Boolean(tituloEnvio && ES_RETIRO.test(tituloEnvio))
   const dir = o.shippingAddress
   let lineasConCantidadesDistintas = 0
   let lineasSinDato = 0
-  const region = retiro || !dir ? '' : regionNormalizada(dir.province)
-  const comuna = retiro ? 'RETIRO TIENDA' : !dir ? SIN_DIRECCION : may(dir.city)
+  const region = retiro ? REGION_RETIRO : !dir ? '' : regionNormalizada(dir.province)
+  const comuna = retiro ? COMUNA_RETIRO : !dir ? SIN_DIRECCION : may(dir.city)
   const numeroPedido = o.name.replace('#', '')
 
   const muebles: MuebleMapeado[] = []
@@ -349,7 +376,13 @@ export function mapearPedido(o: PedidoShopify): ResultadoMapeo {
   return {
     muebles,
     cliente,
-    entrega: { retiro, sinDireccion: !retiro && !dir, sinTelefono: !dir?.phone?.trim() },
+    entrega: {
+      retiro,
+      tituloRetiro: retiro ? tituloEnvio : null,
+      retiroConDireccion: retiro && Boolean(dir?.address1?.trim() || dir?.city?.trim()),
+      sinDireccion: !retiro && !dir,
+      sinTelefono: !dir?.phone?.trim(),
+    },
     preparado: { lineasConCantidadesDistintas, lineasSinDato },
     preparadoEn: fechasPreparado.length ? fechasPreparado[fechasPreparado.length - 1] : null,
   }
@@ -732,9 +765,14 @@ export interface ResultadoCorrida {
   /* Cómo es la entrega de los pedidos importables (por pedido, no por mueble). */
   entrega: {
     retiros: number
+    /* Retiros que además traen dirección de envío (para revisarlos a mano). */
+    retiros_con_direccion: number
+    /* Títulos de línea de envío tomados como retiro, con cuántos pedidos tiene cada uno. */
+    titulos_de_retiro: Record<string, number>
     sin_direccion: number
     sin_telefono: number
     pedidos_retiro: string[]
+    pedidos_retiro_con_direccion: string[]
     pedidos_sin_direccion: string[]
     pedidos_sin_telefono: string[]
   }
@@ -840,7 +878,17 @@ export async function sincronizar(opts: OpcionesCorrida, deps: DepsCorrida): Pro
       subidas: 0,
       numeros_que_subirian: [],
     },
-    entrega: { retiros: 0, sin_direccion: 0, sin_telefono: 0, pedidos_retiro: [], pedidos_sin_direccion: [], pedidos_sin_telefono: [] },
+    entrega: {
+      retiros: 0,
+      retiros_con_direccion: 0,
+      titulos_de_retiro: {},
+      sin_direccion: 0,
+      sin_telefono: 0,
+      pedidos_retiro: [],
+      pedidos_retiro_con_direccion: [],
+      pedidos_sin_direccion: [],
+      pedidos_sin_telefono: [],
+    },
   }
   if (opts.dry && opts.filas) r.filas = []
 
@@ -978,6 +1026,14 @@ export async function sincronizar(opts: OpcionesCorrida, deps: DepsCorrida): Pro
         if (mapeo.entrega.retiro) {
           r.entrega.retiros++
           anotar(r.entrega.pedidos_retiro)
+          const titulo = (mapeo.entrega.tituloRetiro ?? '').slice(0, 80)
+          if (titulo in r.entrega.titulos_de_retiro || Object.keys(r.entrega.titulos_de_retiro).length < 20) {
+            r.entrega.titulos_de_retiro[titulo] = (r.entrega.titulos_de_retiro[titulo] ?? 0) + 1
+          }
+        }
+        if (mapeo.entrega.retiroConDireccion) {
+          r.entrega.retiros_con_direccion++
+          anotar(r.entrega.pedidos_retiro_con_direccion)
         }
         if (mapeo.entrega.sinDireccion) {
           r.entrega.sin_direccion++
@@ -1124,7 +1180,7 @@ export interface DiagPedido {
   la_nota_menciona_retiro?: boolean
   lineas?: number
   lineas_que_requieren_envio?: number
-  /* Lo que hace HOY la regla: solo mira si el título de la línea de envío dice "retiro". */
+  /* Lo que hace la regla de retiro: mira si el título de la línea de envío dice "retiro" o "sala de ventas". */
   regla_actual_detecta_retiro?: boolean
   comuna_que_queda_hoy?: string
   /* El método de entrega (retiro, envío...) vive en las órdenes de cumplimiento y
@@ -1153,7 +1209,7 @@ export async function diagnosticar(nombres: string[], shopify: ClienteShopify): 
       continue
     }
     const linea = n.shippingLine
-    const retiro = Boolean(linea?.title && /retiro/i.test(linea.title))
+    const retiro = Boolean(linea?.title && ES_RETIRO.test(linea.title))
     const d: DiagPedido = {
       pedido: nombre,
       encontrado: true,
@@ -1171,7 +1227,7 @@ export async function diagnosticar(nombres: string[], shopify: ClienteShopify): 
       lineas: (n.lineItems?.nodes ?? []).length,
       lineas_que_requieren_envio: ((n.lineItems?.nodes ?? []) as { requiresShipping?: boolean }[]).filter((l) => l.requiresShipping).length,
       regla_actual_detecta_retiro: retiro,
-      comuna_que_queda_hoy: retiro ? 'RETIRO TIENDA' : !n.shippingAddress ? SIN_DIRECCION : '(la comuna de la dirección)',
+      comuna_que_queda_hoy: retiro ? COMUNA_RETIRO : !n.shippingAddress ? SIN_DIRECCION : '(la comuna de la dirección)',
     }
     try {
       const e = await buscar(QUERY_DIAGNOSTICO_ENTREGA, nombre)
