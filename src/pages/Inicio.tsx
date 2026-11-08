@@ -1,12 +1,14 @@
 import { Navigate } from 'react-router-dom'
 import { rutaInicial } from '../components/layout/navegacion'
 import { useAuth } from '../hooks/useAuth'
+import { useCambiosPendientes } from '../hooks/useCambiosPendientes'
 import { Dashboard } from './Dashboard'
 
 /* Cada rol entra a un lugar distinto. El administrador se queda acá mismo
    (ve el Dashboard); los demás roles se redirigen a su propio módulo. */
 export function Inicio() {
-  const { rol, cerrarSesion } = useAuth()
+  const { rol } = useAuth()
+  const { cerrarSesionSegura } = useCambiosPendientes()
 
   if (rol === 'administrador') return <Dashboard />
 
@@ -30,7 +32,7 @@ export function Inicio() {
           El panel de {rol ?? 'tu rol'} está en construcción.
         </p>
         <button
-          onClick={cerrarSesion}
+          onClick={cerrarSesionSegura}
           style={{
             background: 'transparent',
             border: 'none',

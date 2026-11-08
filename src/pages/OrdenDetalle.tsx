@@ -9,25 +9,22 @@ import { Breadcrumb } from '../components/ui/Breadcrumb'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
 import { EstadoOrdenBadge } from '../components/ui/EstadoOrdenBadge'
+import { useCambiosPendientes } from '../hooks/useCambiosPendientes'
 import { useEsEscritorio } from '../hooks/useMediaQuery'
 import { faltaColorTela, mencionaPatas, preparadoPorShopify, shopifyDesmarco } from '../lib/avisosOrden'
 import { imprimirConTitulo } from '../lib/comprobante'
 import { formatearFechaHora, formatearTelefono, normalizarTelefono, telefonoValido } from '../lib/format'
 import {
-  aplicarEtapaLocal,
   avanzarEstadoOrden,
   ESTADO_ORDEN_LABEL,
   ESTADO_ORDEN_SIGUIENTE,
-  etapaMarcada,
   etapasBloqueadas,
   ETAPAS,
   formatearFechaPedido,
-  marcarEtapa,
   obtenerOrden,
   ORIGEN_LABEL,
   type OrdenCompleta,
 } from '../lib/ordenes'
-import type { Etapa } from '../types'
 
 const mensajeError = (err: unknown, porDefecto: string) => (err instanceof Error ? err.message : porDefecto)
 
@@ -45,22 +42,38 @@ export function OrdenDetalle() {
   const [guardando, setGuardando] = useState(false)
   const [emitidoEn, setEmitidoEn] = useState(() => new Date().toISOString())
 
-  const cargar = useCallback(async () => {
-    if (!id) return
-    setCargando(true)
-    setError(null)
-    try {
-      setDatos(await obtenerOrden(id))
-    } catch (err) {
-      setError(mensajeError(err, 'No se pudo cargar la orden'))
-    } finally {
-      setCargando(false)
-    }
-  }, [id])
+  /* `silenciosa`: vuelve a pedir la orden sin mostrar "Cargando...", para no hacer
+     parpadear la pantalla después de guardar cambios. */
+  const cargar = useCallback(
+    async (silenciosa = false) => {
+      if (!id) return
+      if (!silenciosa) setCargando(true)
+      setError(null)
+      try {
+        setDatos(await obtenerOrden(id))
+      } catch (err) {
+        setError(mensajeError(err, 'No se pudo cargar la orden'))
+      } finally {
+        setCargando(false)
+      }
+    },
+    [id],
+  )
 
   useEffect(() => {
     void cargar()
   }, [cargar])
+
+  /* Las casillas no guardan al instante: sus cambios quedan pendientes en el almacén
+     compartido hasta pulsar "Guardar" en la barra de abajo. `datos` es lo que dice el
+     servidor; lo pendiente se superpone al mostrarlo. */
+  const cp = useCambiosPendientes()
+  const { conciliar, suscribirRecarga } = cp
+  useEffect(() => {
+    if (datos) conciliar([datos.orden, ...datos.hermanas])
+  }, [datos, conciliar])
+  /* Después de guardar, la orden se vuelve a pedir al servidor. */
+  useEffect(() => suscribirRecarga(() => void cargar(true)), [suscribirRecarga, cargar])
 
   if (cargando) {
     return (
@@ -90,6 +103,7 @@ export function OrdenDetalle() {
   }
 
   const { orden, hermanas, cliente } = datos
+  const tieneCambios = cp.hayCambios(orden.id)
   const cancelada = orden.canceladoEn !== null
   const bloqueada = etapasBloqueadas(orden)
   const siguiente = ESTADO_ORDEN_SIGUIENTE[orden.estado]
@@ -116,23 +130,6 @@ export function OrdenDetalle() {
   const telefonoLegible = (valor: string) => {
     const digitos = normalizarTelefono(valor)
     return telefonoValido(digitos) ? formatearTelefono(digitos) : valor
-  }
-
-  const cambiarEtapa = async (etapa: Etapa, valor: boolean) => {
-    if (etapa === 'listo' && !valor && !window.confirm(`¿Quitar LISTO de ${orden.numero}? Volverá a "Por fabricar".`)) return
-    setError(null)
-    setGuardando(true)
-    const previa = datos
-    setDatos({ ...datos, orden: aplicarEtapaLocal(orden, etapa, valor) })
-    try {
-      const actualizada = await marcarEtapa(orden.id, etapa, valor)
-      setDatos((d) => (d ? { ...d, orden: actualizada } : d))
-    } catch (err) {
-      setDatos(previa)
-      setError(mensajeError(err, 'No se pudo actualizar la etapa'))
-    } finally {
-      setGuardando(false)
-    }
   }
 
   const avanzar = async () => {
@@ -181,9 +178,11 @@ export function OrdenDetalle() {
             grande
             etiqueta={e.etiqueta}
             descripcion={`${e.etiqueta} del pedido ${orden.numero}`}
-            marcada={etapaMarcada(orden, e.id)}
-            deshabilitada={bloqueada || guardando}
-            onCambiar={(v) => void cambiarEtapa(e.id, v)}
+            marcada={cp.valorEfectivo(orden, e.id)}
+            deshabilitada={bloqueada}
+            pendiente={cp.esPendiente(orden.id, e.id)}
+            problema={cp.esProblema(orden.id, e.id)}
+            onCambiar={(v) => cp.marcar(orden, e.id, v)}
           />
         ))}
       </div>
@@ -220,11 +219,16 @@ export function OrdenDetalle() {
             fullWidth={!esEscritorio}
             variant="accent"
             iconLeft={<ArrowRight size={17} />}
-            disabled={guardando}
+            disabled={guardando || tieneCambios}
             onClick={() => void avanzar()}
           >
             {guardando ? 'Actualizando...' : `Pasar a ${ESTADO_ORDEN_LABEL[siguiente].toLowerCase()}`}
           </Button>
+          {tieneCambios && (
+            <p style={{ margin: 'var(--space-2) 0 0', font: 'var(--type-caption)', color: 'var(--text-muted)' }}>
+              Guarda primero los cambios de casillas de este mueble (barra de abajo) para poder cambiar su estado.
+            </p>
+          )}
         </div>
       )}
 
@@ -402,7 +406,8 @@ export function OrdenDetalle() {
       )}
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
-        <EstadoOrdenBadge estado={orden.estado} />
+        <EstadoOrdenBadge estado={cp.ordenEfectiva(orden).estado} />
+        {tieneCambios && <span style={{ font: 'var(--type-caption)', color: 'var(--tinta-700)' }}>Sin guardar</span>}
         {orden.esAdicional && (
           <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>Línea adicional (no es un mueble)</span>
         )}

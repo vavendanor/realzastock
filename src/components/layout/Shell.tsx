@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { useEsEscritorio } from '../../hooks/useMediaQuery'
+import { BarraCambiosPendientes } from '../BarraCambiosPendientes'
 import { SidebarNav } from './SidebarNav'
 import { TabBar } from './TabBar'
 import { TopBar } from './TopBar'
@@ -42,6 +43,8 @@ export function Shell({ eyebrow, title, actions, onSearch, children }: ShellProp
             {children}
           </div>
         </main>
+        {/* Solo se ve en las pantallas de producción y cuando hay algo que decir. */}
+        <BarraCambiosPendientes />
         {!esEscritorio && <TabBar />}
       </div>
     </div>

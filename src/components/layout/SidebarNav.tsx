@@ -1,6 +1,7 @@
 import { LogOut } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
+import { useCambiosPendientes } from '../../hooks/useCambiosPendientes'
 import { ROL_LABEL } from '../../lib/usuarios'
 import { navParaRol } from './navegacion'
 
@@ -14,7 +15,8 @@ function iniciales(nombre: string) {
 }
 
 export function SidebarNav() {
-  const { user, rol, cerrarSesion } = useAuth()
+  const { user, rol } = useAuth()
+  const { cerrarSesionSegura } = useCambiosPendientes()
   const nombre = user?.email ?? ''
 
   return (
@@ -166,7 +168,7 @@ export function SidebarNav() {
             </span>
           </span>
           <button
-            onClick={cerrarSesion}
+            onClick={cerrarSesionSegura}
             aria-label="Salir"
             title="Cerrar sesión"
             style={{

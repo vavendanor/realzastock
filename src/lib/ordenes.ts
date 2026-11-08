@@ -1,5 +1,6 @@
 import type { DatosClienteOrden, EstadoOrden, Etapa, OrdenFabricacion, OrigenOrden } from '../types'
 import { ESTADO_ORDEN_LABEL, ORDEN_ESTADOS_ORDEN, ORDEN_ORIGENES, ORIGEN_LABEL } from './etiquetas'
+import type { CambioDeLote } from './cambiosPendientes'
 import { supabase } from './supabaseClient'
 
 export { ESTADO_ORDEN_LABEL, ORDEN_ESTADOS_ORDEN, ORDEN_ORIGENES, ORIGEN_LABEL }
@@ -418,6 +419,17 @@ export async function marcarEtapa(ordenId: string, etapa: Etapa, valor: boolean)
   })
   if (error) throw new Error(error.message)
   return aplanarOrden(data as unknown as OrdenRaw)
+}
+
+/* Aplica de una vez un lote de casillas (guardar_cambios_etapas, migración 0017):
+   todo o nada, con comparación contra el valor esperado. Si el servidor rechaza
+   el lote, lanza un error con "code" y "details" (el detalle de los problemas,
+   en JSON) para que lo interprete cambiosPendientes.interpretarError. Devuelve
+   las órdenes que quedaron actualizadas. */
+export async function guardarCambiosEtapas(cambios: CambioDeLote[]): Promise<OrdenFabricacion[]> {
+  const { data, error } = await supabase.rpc('guardar_cambios_etapas', { p_cambios: cambios })
+  if (error) throw Object.assign(new Error(error.message), { details: error.details ?? null, code: error.code ?? null })
+  return ((data ?? []) as unknown as OrdenRaw[]).map(aplanarOrden)
 }
 
 export async function avanzarEstadoOrden(ordenId: string): Promise<EstadoOrden> {

@@ -42,3 +42,10 @@ export function rutaInicial(rol: UserRole | null): string | null {
   if (rol === 'bodega') return '/pedidos'
   return null
 }
+
+/* Las pantallas de producción: Pedidos (lista y detalle de un mueble) y las hojas de
+   fabricación. Los cambios de casillas sin guardar se comparten entre ellas; al salir
+   de este grupo se avisa. */
+export function esRutaDeProduccion(ruta: string) {
+  return /^\/(pedidos|hojas)(\/|$)/.test(ruta)
+}

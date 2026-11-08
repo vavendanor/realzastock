@@ -4,6 +4,7 @@ import { createBrowserRouter, RouterProvider } from 'react-router-dom'
 import './index.css'
 import App from './App.tsx'
 import { AuthProvider } from './hooks/useAuth.tsx'
+import { CambiosPendientesProvider } from './hooks/useCambiosPendientes.tsx'
 
 /* Router de datos (createBrowserRouter) en lugar de <BrowserRouter>: es el único
    modo en que React Router permite bloquear una navegación con useBlocker, que
@@ -17,7 +18,9 @@ const router = createBrowserRouter([
     path: '*',
     element: (
       <AuthProvider>
-        <App />
+        <CambiosPendientesProvider>
+          <App />
+        </CambiosPendientesProvider>
       </AuthProvider>
     ),
   },

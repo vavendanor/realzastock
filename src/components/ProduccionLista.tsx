@@ -2,15 +2,14 @@ import { ClipboardList, Factory, FileDown, FilterX, SlidersHorizontal } from 'lu
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
+import { useCambiosPendientes } from '../hooks/useCambiosPendientes'
 import { useEsEscritorio } from '../hooks/useMediaQuery'
 import { exportarPedidosAExcel } from '../lib/exportarPedidos'
 import { describirAlcance, describirSeleccion, nombreArchivoHojaFabricacion } from '../lib/hojaFabricacion'
 import {
-  aplicarEtapaLocal,
   contarOrdenesPorEstado,
   contarOrdenesTotales,
   ESTADO_ORDEN_LABEL,
-  etapaMarcada,
   etapasBloqueadas,
   ETAPAS,
   fechaLocal,
@@ -21,7 +20,6 @@ import {
   listarOpcionesFiltro,
   listarOrdenes,
   listarOrdenesParaExportar,
-  marcarEtapa,
   ORDEN_ESTADOS_ORDEN,
   ORDEN_ORIGENES,
   ORIGEN_LABEL,
@@ -115,12 +113,10 @@ export function ProduccionLista({ recargaToken }: Props) {
   const [limitado, setLimitado] = useState(false)
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [errorEtapa, setErrorEtapa] = useState<string | null>(null)
   const [conteos, setConteos] = useState<ConteoEstados | null>(null)
   /* null = todavía no se sabe. 0 = no se ha importado ninguna orden. */
   const [totalSistema, setTotalSistema] = useState<number | null>(null)
   const [opciones, setOpciones] = useState<OpcionesFiltro>({ comunas: [], modelos: [], telas: [] })
-  const [pendientes, setPendientes] = useState<ReadonlySet<string>>(new Set())
   const [filtrosAbiertos, setFiltrosAbiertos] = useState(false)
   const [exportando, setExportando] = useState(false)
   const [avisoExportacion, setAvisoExportacion] = useState<{ tipo: 'ok' | 'error'; texto: string } | null>(null)
@@ -186,28 +182,28 @@ export function ProduccionLista({ recargaToken }: Props) {
     void cargarResumen()
   }, [cargarResumen, recargaToken])
 
-  const cambiarEtapa = async (orden: OrdenFabricacion, etapa: Etapa, valor: boolean) => {
-    if (etapa === 'listo' && !valor && !window.confirm(`¿Quitar LISTO de ${orden.numero}? Volverá a "Por fabricar".`)) return
+  /* Las casillas NO guardan al instante: los cambios quedan pendientes en el
+     almacén compartido (hooks/useCambiosPendientes) hasta que se pulsa "Guardar"
+     en la barra de abajo. Aquí `ordenes` es siempre lo que dice el servidor; lo
+     pendiente se superpone al mostrarlo. */
+  const cp = useCambiosPendientes()
+  const { conciliar, suscribirRecarga } = cp
 
-    setErrorEtapa(null)
-    setPendientes((p) => new Set(p).add(orden.id))
-    /* Se muestra el cambio al instante; si el servidor lo rechaza, se revierte. */
-    setOrdenes((filas) => filas.map((o) => (o.id === orden.id ? aplicarEtapaLocal(o, etapa, valor) : o)))
-    try {
-      const actualizada = await marcarEtapa(orden.id, etapa, valor)
-      setOrdenes((filas) => filas.map((o) => (o.id === orden.id ? actualizada : o)))
-      if (etapa === 'listo') void cargarResumen()
-    } catch (err) {
-      setOrdenes((filas) => filas.map((o) => (o.id === orden.id ? orden : o)))
-      setErrorEtapa(`No se pudo actualizar ${orden.numero}: ${mensajeError(err, 'error desconocido')}`)
-    } finally {
-      setPendientes((p) => {
-        const resto = new Set(p)
-        resto.delete(orden.id)
-        return resto
-      })
-    }
-  }
+  /* Quita los cambios que el servidor ya cumplió (por ejemplo, la sincronización
+     marcó "fabricado" desde Shopify) y marca los que ya no se podrían guardar. */
+  useEffect(() => {
+    conciliar(ordenes)
+  }, [ordenes, conciliar])
+
+  /* Después de guardar, la lista se vuelve a pedir al servidor. */
+  useEffect(
+    () =>
+      suscribirRecarga(() => {
+        void cargarLista()
+        void cargarResumen()
+      }),
+    [suscribirRecarga, cargarLista, cargarResumen],
+  )
 
   const abrir = (o: OrdenFabricacion) => navigate(`/pedidos/${o.id}`)
 
@@ -279,9 +275,11 @@ export function ProduccionLista({ recargaToken }: Props) {
       key={etapa}
       etiqueta={etiqueta}
       descripcion={`${etiqueta} del pedido ${o.numero}`}
-      marcada={etapaMarcada(o, etapa)}
-      deshabilitada={etapasBloqueadas(o) || pendientes.has(o.id)}
-      onCambiar={(v) => void cambiarEtapa(o, etapa, v)}
+      marcada={cp.valorEfectivo(o, etapa)}
+      deshabilitada={etapasBloqueadas(o)}
+      pendiente={cp.esPendiente(o.id, etapa)}
+      problema={cp.esProblema(o.id, etapa)}
+      onCambiar={(v) => cp.marcar(o, etapa, v)}
       grande={grande}
     />
   )
@@ -520,7 +518,8 @@ export function ProduccionLista({ recargaToken }: Props) {
           <span className="rh-num" style={{ font: 'var(--type-body-strong)', color: 'var(--text-strong)' }}>
             {o.numero}
           </span>
-          <EstadoOrdenBadge estado={o.estado} />
+          <EstadoOrdenBadge estado={cp.ordenEfectiva(o).estado} />
+          {cp.hayCambios(o.id) && chip('Sin guardar', 'aviso')}
           {preparadoPorShopify(o) && chip('Preparado en Shopify', 'neutro')}
           {shopifyDesmarco(o) && chip('Shopify ya no lo tiene preparado', 'aviso')}
           {o.origen === 'manual_shopify' && chip('Manual', 'neutro')}
@@ -637,13 +636,6 @@ export function ProduccionLista({ recargaToken }: Props) {
           <span style={{ font: 'var(--type-body)', color: 'var(--state-danger)' }}>{error}</span>
         </Card>
       )}
-      {errorEtapa && (
-        <Card padding="var(--space-4) var(--space-6)" style={{ borderColor: 'var(--state-danger)' }}>
-          <span role="alert" style={{ font: 'var(--type-body)', color: 'var(--state-danger)' }}>
-            {errorEtapa}
-          </span>
-        </Card>
-      )}
       {avisoExportacion && (
         <Card padding="var(--space-4) var(--space-6)" style={{ borderColor: avisoExportacion.tipo === 'ok' ? 'var(--state-success)' : 'var(--state-danger)' }}>
           <span
@@ -735,7 +727,10 @@ export function ProduccionLista({ recargaToken }: Props) {
                     <div style={{ font: 'var(--type-body-strong)', color: 'var(--text-strong)' }}>{o.modelo ?? '—'}</div>
                     {subtitulo(o) && <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{subtitulo(o)}</div>}
                   </div>
-                  <EstadoOrdenBadge estado={o.estado} />
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+                    <EstadoOrdenBadge estado={cp.ordenEfectiva(o).estado} />
+                    {cp.hayCambios(o.id) && chip('Sin guardar', 'aviso')}
+                  </div>
                 </div>
                 {(preparadoPorShopify(o) || shopifyDesmarco(o)) && (
                   <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', marginTop: 'var(--space-2)' }}>

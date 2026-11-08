@@ -1,6 +1,6 @@
 import { LogOut, Search } from 'lucide-react'
 import type { ReactNode } from 'react'
-import { useAuth } from '../../hooks/useAuth'
+import { useCambiosPendientes } from '../../hooks/useCambiosPendientes'
 import { useEsEscritorio } from '../../hooks/useMediaQuery'
 import { InstallButton } from './InstallButton'
 
@@ -14,7 +14,7 @@ interface TopBarProps {
 
 export function TopBar({ title, eyebrow, actions = null, onSearch, searchPlaceholder = 'Buscar SKU o modelo' }: TopBarProps) {
   const esEscritorio = useEsEscritorio()
-  const { cerrarSesion } = useAuth()
+  const { cerrarSesionSegura } = useCambiosPendientes()
 
   return (
     <header
@@ -92,7 +92,7 @@ export function TopBar({ title, eyebrow, actions = null, onSearch, searchPlaceho
           tiene que vivir acá. */}
       {!esEscritorio && (
         <button
-          onClick={cerrarSesion}
+          onClick={cerrarSesionSegura}
           aria-label="Cerrar sesión"
           title="Cerrar sesión"
           style={{
