@@ -1,5 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { ProtectedRoute } from './components/ProtectedRoute'
+import { HojaNueva } from './pages/HojaNueva'
+import { Hojas } from './pages/Hojas'
 import { Inicio } from './pages/Inicio'
 import { Inventario } from './pages/Inventario'
 import { InventarioForm } from './pages/InventarioForm'
@@ -7,6 +9,7 @@ import { Login } from './pages/Login'
 import { OrdenDetalle } from './pages/OrdenDetalle'
 import { Pedidos } from './pages/Pedidos'
 import { Probador } from './pages/Probador'
+import { Reporte } from './pages/Reporte'
 import { UsuarioNuevo } from './pages/UsuarioNuevo'
 import { Usuarios } from './pages/Usuarios'
 import { Ventas } from './pages/Ventas'
@@ -14,8 +17,9 @@ import { VentaNueva } from './pages/VentaNueva'
 
 /* Módulos listos: Inventario (administrador), Ventas (administrador y
    vendedor), Pedidos (órdenes de fabricación de Shopify: administrador y
-   bodega), Probador de colores (administrador y bodega) y Usuarios
-   (exclusivo de administrador). */
+   bodega), Hojas de fabricación (administrador y bodega), Probador de
+   colores (administrador y bodega), Reporte y Usuarios (exclusivos de
+   administrador). */
 function App() {
   return (
     <Routes>
@@ -85,6 +89,32 @@ function App() {
         element={
           <ProtectedRoute roles={['administrador', 'bodega']}>
             <OrdenDetalle />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/hojas"
+        element={
+          <ProtectedRoute roles={['administrador', 'bodega']}>
+            <Hojas />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/hojas/nueva"
+        element={
+          <ProtectedRoute roles={['administrador', 'bodega']}>
+            <HojaNueva />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/reporte"
+        element={
+          <ProtectedRoute roles={['administrador']}>
+            <Reporte />
           </ProtectedRoute>
         }
       />

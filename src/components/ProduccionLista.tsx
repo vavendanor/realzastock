@@ -1,11 +1,8 @@
-import { ClipboardList, Factory, FileDown, FilterX, SlidersHorizontal } from 'lucide-react'
+import { ClipboardList, Factory, FilterX, SlidersHorizontal } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useAuth } from '../hooks/useAuth'
 import { useCambiosPendientes } from '../hooks/useCambiosPendientes'
 import { useEsEscritorio } from '../hooks/useMediaQuery'
-import { exportarPedidosAExcel } from '../lib/exportarPedidos'
-import { describirAlcance, describirSeleccion, nombreArchivoHojaFabricacion } from '../lib/hojaFabricacion'
 import {
   contarOrdenesPorEstado,
   contarOrdenesTotales,
@@ -19,7 +16,6 @@ import {
   LIMITE_ORDENES,
   listarOpcionesFiltro,
   listarOrdenes,
-  listarOrdenesParaExportar,
   ORDEN_ESTADOS_ORDEN,
   ORDEN_ORIGENES,
   ORIGEN_LABEL,
@@ -30,7 +26,6 @@ import {
 import { faltaColorTela, mencionaPatas, preparadoPorShopify, shopifyDesmarco } from '../lib/avisosOrden'
 import type { Etapa, OrdenFabricacion } from '../types'
 import { CasillaEtapa } from './CasillaEtapa'
-import { HojaFabricacion } from './HojaFabricacion'
 import { Button } from './ui/Button'
 import { Card } from './ui/Card'
 import { Checkbox } from './ui/Checkbox'
@@ -39,10 +34,27 @@ import { EstadoOrdenBadge } from './ui/EstadoOrdenBadge'
 import { Input } from './ui/Input'
 import { Select } from './ui/Select'
 
+/* Para usar la tabla como selector de pedidos (crear una hoja de fabricación). Se elige por
+   PEDIDO: marcar cualquier fila de un pedido lo elige completo. Quien la usa guarda lo elegido
+   (la selección no depende de los filtros: se mantiene aunque cambien). */
+export interface SeleccionDePedidos {
+  /* Números de pedido elegidos. */
+  elegidos: ReadonlySet<string>
+  alternar: (pedido: string) => void
+  /* Elige o quita varios pedidos de una vez (la casilla del encabezado). */
+  fijar: (pedidos: readonly string[], elegir: boolean) => void
+}
+
 interface Props {
   /* Cada vez que cambia, la pestaña vuelve a pedir sus datos. */
   recargaToken: number
+  /* Si se indica, la tabla es para ELEGIR pedidos: muestra casillas de selección, parte filtrada en
+     "por fabricar" y no ofrece el botón de crear hoja. */
+  seleccion?: SeleccionDePedidos
 }
+
+/* Los filtros con los que parte (y a los que vuelve "Limpiar filtros") la tabla. */
+const filtrosBase = (eligiendo: boolean): FiltrosOrdenes => (eligiendo ? { ...FILTROS_ORDENES_VACIOS, estado: 'por_fabricar' } : FILTROS_ORDENES_VACIOS)
 
 type Atajo = { id: string; etiqueta: string; rango: () => [string, string] }
 
@@ -104,11 +116,12 @@ const chip = (texto: string, tono: 'aviso' | 'neutro') => (
   </span>
 )
 
-export function ProduccionLista({ recargaToken }: Props) {
+export function ProduccionLista({ recargaToken, seleccion }: Props) {
   const navigate = useNavigate()
   const esEscritorio = useEsEscritorio()
+  const eligiendo = seleccion !== undefined
 
-  const [filtros, setFiltros] = useState<FiltrosOrdenes>(FILTROS_ORDENES_VACIOS)
+  const [filtros, setFiltros] = useState<FiltrosOrdenes>(() => filtrosBase(eligiendo))
   const [ordenes, setOrdenes] = useState<OrdenFabricacion[]>([])
   const [limitado, setLimitado] = useState(false)
   const [cargando, setCargando] = useState(true)
@@ -118,19 +131,14 @@ export function ProduccionLista({ recargaToken }: Props) {
   const [totalSistema, setTotalSistema] = useState<number | null>(null)
   const [opciones, setOpciones] = useState<OpcionesFiltro>({ comunas: [], modelos: [], telas: [] })
   const [filtrosAbiertos, setFiltrosAbiertos] = useState(false)
-  const [exportando, setExportando] = useState(false)
-  const [avisoExportacion, setAvisoExportacion] = useState<{ tipo: 'ok' | 'error'; texto: string } | null>(null)
-  /* Selección de filas para la hoja de fabricación (ids de las órdenes). */
-  const [seleccion, setSeleccion] = useState<ReadonlySet<string>>(new Set())
-  const [preparandoHoja, setPreparandoHoja] = useState(false)
-  const [hoja, setHoja] = useState<{ ordenes: OrdenFabricacion[]; alcance: string; archivoExcel: string; emitidoEn: string } | null>(null)
-  const esAdministrador = useAuth().rol === 'administrador'
   /* Para ignorar respuestas viejas si el usuario cambia filtros rápido. */
   const peticion = useRef(0)
 
   const fechasInvertidas = Boolean(filtros.desde && filtros.hasta && filtros.desde > filtros.hasta)
   const cambiarFiltros = (parcial: Partial<FiltrosOrdenes>) => setFiltros((f) => ({ ...f, ...parcial }))
-  const nFiltros = filtrosActivos(filtros)
+  /* Al elegir pedidos, "por fabricar" es el punto de partida y no cuenta como filtro puesto. */
+  const nFiltros = filtrosActivos(filtros) - (eligiendo && filtros.estado === 'por_fabricar' ? 1 : 0)
+  const limpiarFiltros = () => setFiltros({ ...filtrosBase(eligiendo), incluirAdicionales: filtros.incluirAdicionales })
 
   const cargarLista = useCallback(async () => {
     const numero = ++peticion.current
@@ -147,10 +155,6 @@ export function ProduccionLista({ recargaToken }: Props) {
       if (numero !== peticion.current) return
       setOrdenes(resultado.ordenes)
       setLimitado(resultado.limitado)
-      /* Solo queda seleccionado lo que sigue a la vista: si se cambian los
-         filtros, no quedan filas elegidas "escondidas". */
-      const visibles = new Set(resultado.ordenes.map((o) => o.id))
-      setSeleccion((previa) => (previa.size === 0 ? previa : new Set([...previa].filter((id) => visibles.has(id)))))
     } catch (err) {
       if (numero === peticion.current) setError(mensajeError(err, 'Error desconocido al cargar las órdenes'))
     } finally {
@@ -205,56 +209,18 @@ export function ProduccionLista({ recargaToken }: Props) {
     [suscribirRecarga, cargarLista, cargarResumen],
   )
 
-  const abrir = (o: OrdenFabricacion) => navigate(`/pedidos/${o.id}`)
+  /* Al elegir pedidos, tocar una fila la elige o la quita (no se sale de la pantalla y se perdería lo elegido). */
+  const abrir = (o: OrdenFabricacion) => (seleccion ? seleccion.alternar(o.pedidoNumero) : navigate(`/pedidos/${o.id}`))
 
-  /* ---------------- Selección y hoja de fabricación ---------------- */
-  const seleccionadas = ordenes.filter((o) => seleccion.has(o.id))
-  const todasSeleccionadas = ordenes.length > 0 && seleccionadas.length === ordenes.length
-  const algunasSeleccionadas = seleccionadas.length > 0 && !todasSeleccionadas
+  /* ---------------- Selección de pedidos (solo al elegir para una hoja) ---------------- */
+  const pedidosVisibles = [...new Set(ordenes.map((o) => o.pedidoNumero))]
+  const nVisiblesElegidos = seleccion ? pedidosVisibles.filter((p) => seleccion.elegidos.has(p)).length : 0
+  const todosVisibles = pedidosVisibles.length > 0 && nVisiblesElegidos === pedidosVisibles.length
+  const algunosVisibles = nVisiblesElegidos > 0 && !todosVisibles
+  const alternarTodos = () => seleccion?.fijar(pedidosVisibles, !todosVisibles)
+  const quitarTodos = () => seleccion?.fijar([...seleccion.elegidos], false)
 
-  const alternarSeleccion = (id: string) =>
-    setSeleccion((previa) => {
-      const nueva = new Set(previa)
-      if (!nueva.delete(id)) nueva.add(id)
-      return nueva
-    })
-  const cerrarHoja = useCallback(() => setHoja(null), [])
-  const alternarTodas = () => setSeleccion(todasSeleccionadas ? new Set() : new Set(ordenes.map((o) => o.id)))
-
-  /* Con filas elegidas: la hoja es exactamente esa selección. Sin selección: todos
-     los muebles POR FABRICAR que coinciden con los filtros de la pantalla (fechas,
-     modelo, tela, comuna, origen), no solo las 500 filas de la lista; el filtro de
-     estado se ignora porque la hoja es siempre de lo que falta fabricar. Los
-     adicionales se incluyen siempre: van como sección aparte al final. */
-  const abrirHoja = async () => {
-    setPreparandoHoja(true)
-    setAvisoExportacion(null)
-    const hoy = fechaLocal(new Date())
-    try {
-      if (seleccionadas.length > 0) {
-        setHoja({
-          ordenes: seleccionadas,
-          alcance: describirSeleccion(seleccionadas),
-          archivoExcel: nombreArchivoHojaFabricacion(filtros, hoy, true),
-          emitidoEn: new Date().toISOString(),
-        })
-      } else {
-        const porFabricar = await listarOrdenesParaExportar({ ...filtros, estado: 'por_fabricar', incluirAdicionales: true })
-        if (porFabricar.length === 0) throw new Error('No hay muebles por fabricar con estos filtros.')
-        setHoja({
-          ordenes: porFabricar,
-          alcance: describirAlcance(filtros),
-          archivoExcel: nombreArchivoHojaFabricacion(filtros, hoy, false),
-          emitidoEn: new Date().toISOString(),
-        })
-      }
-    } catch (err) {
-      setAvisoExportacion({ tipo: 'error', texto: mensajeError(err, 'No se pudo preparar la hoja de fabricación.') })
-    } finally {
-      setPreparandoHoja(false)
-    }
-  }
-
+  /* Se elige por pedido: la casilla de cualquier fila lo elige completo (todas sus filas quedan marcadas). */
   const casillaSeleccion = (o: OrdenFabricacion, grande: boolean) => (
     <label
       onClick={(e) => e.stopPropagation()}
@@ -262,9 +228,9 @@ export function ProduccionLista({ recargaToken }: Props) {
     >
       <input
         type="checkbox"
-        checked={seleccion.has(o.id)}
-        aria-label={`Elegir ${o.numero} para la hoja de fabricación`}
-        onChange={() => alternarSeleccion(o.id)}
+        checked={seleccion?.elegidos.has(o.pedidoNumero) ?? false}
+        aria-label={`Elegir el pedido ${o.pedidoNumero} para la hoja de fabricación`}
+        onChange={() => seleccion?.alternar(o.pedidoNumero)}
         style={{ width: 18, height: 18, accentColor: 'var(--action-accent)', cursor: 'pointer', margin: 0 }}
       />
     </label>
@@ -409,7 +375,7 @@ export function ProduccionLista({ recargaToken }: Props) {
           variant="ghost"
           iconLeft={<FilterX size={15} />}
           disabled={nFiltros === 0}
-          onClick={() => cambiarFiltros({ ...FILTROS_ORDENES_VACIOS, incluirAdicionales: filtros.incluirAdicionales })}
+          onClick={limpiarFiltros}
         >
           Limpiar filtros
         </Button>
@@ -417,57 +383,24 @@ export function ProduccionLista({ recargaToken }: Props) {
     </>
   )
 
-  /* Exportar a Excel: solo para el administrador. Exporta lo que coincide con los
-     filtros puestos (no solo las 500 filas de la lista). Es una restricción de
-     la pantalla, no de la base de datos. */
-  const exportar = async () => {
-    setExportando(true)
-    setAvisoExportacion(null)
-    try {
-      const r = await exportarPedidosAExcel(filtros)
-      setAvisoExportacion({ tipo: 'ok', texto: `Se descargó ${r.archivo} con ${r.filas} ${r.filas === 1 ? 'fila' : 'filas'}.` })
-    } catch (err) {
-      setAvisoExportacion({ tipo: 'error', texto: mensajeError(err, 'No se pudo generar el archivo.') })
-    } finally {
-      setExportando(false)
-    }
-  }
-  const cuantasFilas = limitado ? `${LIMITE_ORDENES}+` : String(ordenes.length)
-  const botonExportar = esAdministrador ? (
-    <Button
-      size={esEscritorio ? 'sm' : 'md'}
-      variant="secondary"
-      fullWidth={!esEscritorio}
-      iconLeft={<FileDown size={15} />}
-      disabled={cargando || exportando || fechasInvertidas || ordenes.length === 0}
-      onClick={() => void exportar()}
-    >
-      {exportando ? 'Generando Excel...' : `Exportar a Excel (${cuantasFilas})`}
-    </Button>
-  ) : null
-
-  const botonHoja = (
+  /* Crear una hoja de fabricación: lleva a la pantalla donde se eligen los pedidos. En la propia
+     pantalla de elegir no se ofrece. */
+  const botonCrearHoja = eligiendo ? null : (
     <Button
       size={esEscritorio ? 'sm' : 'md'}
       variant="secondary"
       fullWidth={!esEscritorio}
       iconLeft={<ClipboardList size={15} />}
-      disabled={cargando || preparandoHoja || fechasInvertidas || (seleccionadas.length === 0 && ordenes.length === 0)}
-      onClick={() => void abrirHoja()}
+      onClick={() => navigate('/hojas/nueva')}
     >
-      {preparandoHoja ? 'Preparando hoja...' : seleccionadas.length > 0 ? `Hoja de fabricación (${seleccionadas.length} elegidas)` : 'Hoja de fabricación'}
+      Crear hoja de fabricación
     </Button>
   )
 
   const tarjetaFiltros = esEscritorio ? (
     <Card
       title="Filtros"
-      actions={
-        <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-          {botonHoja}
-          {botonExportar}
-        </div>
-      }
+      actions={botonCrearHoja}
     >
       {camposFiltro}
     </Card>
@@ -483,33 +416,32 @@ export function ProduccionLista({ recargaToken }: Props) {
         {nFiltros ? `Filtros (${nFiltros} activos)` : 'Filtros'}
       </Button>
       {filtrosAbiertos && <div style={{ marginTop: 'var(--space-4)' }}>{camposFiltro}</div>}
-      <div style={{ marginTop: 'var(--space-3)', display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-        {botonHoja}
-        {botonExportar}
-      </div>
+      {botonCrearHoja && <div style={{ marginTop: 'var(--space-3)' }}>{botonCrearHoja}</div>}
     </Card>
   )
 
   /* ---------------- Tabla (escritorio) ---------------- */
+  const columnaSeleccion: Column<OrdenFabricacion> = {
+    key: 'seleccion',
+    align: 'center',
+    header: (
+      <input
+        type="checkbox"
+        checked={todosVisibles}
+        ref={(el) => {
+          if (el) el.indeterminate = algunosVisibles
+        }}
+        aria-label="Elegir todos los pedidos visibles para la hoja de fabricación"
+        onChange={alternarTodos}
+        disabled={ordenes.length === 0}
+        style={{ width: 18, height: 18, accentColor: 'var(--action-accent)', cursor: 'pointer', margin: 0, verticalAlign: 'middle' }}
+      />
+    ),
+    render: (o) => casillaSeleccion(o, false),
+  }
+
   const columnas: Column<OrdenFabricacion>[] = [
-    {
-      key: 'seleccion',
-      align: 'center',
-      header: (
-        <input
-          type="checkbox"
-          checked={todasSeleccionadas}
-          ref={(el) => {
-            if (el) el.indeterminate = algunasSeleccionadas
-          }}
-          aria-label="Elegir todas las órdenes visibles para la hoja de fabricación"
-          onChange={alternarTodas}
-          disabled={ordenes.length === 0}
-          style={{ width: 18, height: 18, accentColor: 'var(--action-accent)', cursor: 'pointer', margin: 0, verticalAlign: 'middle' }}
-        />
-      ),
-      render: (o) => casillaSeleccion(o, false),
-    },
+    ...(eligiendo ? [columnaSeleccion] : []),
     {
       key: 'numero',
       header: 'N° y estado',
@@ -621,7 +553,7 @@ export function ProduccionLista({ recargaToken }: Props) {
       {fechasInvertidas ? 'Corrige las fechas para ver órdenes.' : 'Ninguna orden coincide con estos filtros.'}
       {nFiltros > 0 && !fechasInvertidas && (
         <div style={{ marginTop: 'var(--space-3)' }}>
-          <Button size="sm" variant="secondary" iconLeft={<FilterX size={15} />} onClick={() => cambiarFiltros({ ...FILTROS_ORDENES_VACIOS, incluirAdicionales: filtros.incluirAdicionales })}>
+          <Button size="sm" variant="secondary" iconLeft={<FilterX size={15} />} onClick={limpiarFiltros}>
             Limpiar filtros
           </Button>
         </div>
@@ -634,16 +566,6 @@ export function ProduccionLista({ recargaToken }: Props) {
       {error && (
         <Card padding="var(--space-4) var(--space-6)" style={{ borderColor: 'var(--state-danger)' }}>
           <span style={{ font: 'var(--type-body)', color: 'var(--state-danger)' }}>{error}</span>
-        </Card>
-      )}
-      {avisoExportacion && (
-        <Card padding="var(--space-4) var(--space-6)" style={{ borderColor: avisoExportacion.tipo === 'ok' ? 'var(--state-success)' : 'var(--state-danger)' }}>
-          <span
-            role={avisoExportacion.tipo === 'error' ? 'alert' : 'status'}
-            style={{ font: 'var(--type-body)', color: avisoExportacion.tipo === 'ok' ? 'var(--text-strong)' : 'var(--state-danger)' }}
-          >
-            {avisoExportacion.texto}
-          </span>
         </Card>
       )}
       {limitado && (
@@ -680,9 +602,9 @@ export function ProduccionLista({ recargaToken }: Props) {
           title="Órdenes de fabricación"
           subtitle={subtituloListado}
           actions={
-            seleccionadas.length > 0 ? (
-              <Button size="sm" variant="ghost" onClick={() => setSeleccion(new Set())}>
-                Quitar selección ({seleccionadas.length})
+            seleccion && seleccion.elegidos.size > 0 ? (
+              <Button size="sm" variant="ghost" onClick={quitarTodos}>
+                Quitar selección ({seleccion.elegidos.size})
               </Button>
             ) : null
           }
@@ -701,12 +623,12 @@ export function ProduccionLista({ recargaToken }: Props) {
             </Card>
           )}
           {!cargando && ordenes.length === 0 && <Card>{sinResultados}</Card>}
-          {ordenes.length > 0 && (
+          {seleccion && ordenes.length > 0 && (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-3)', padding: '0 var(--space-2)' }}>
-              <Checkbox label="Elegir todas para la hoja" checked={todasSeleccionadas} onChange={alternarTodas} />
-              {seleccionadas.length > 0 && (
-                <Button size="sm" variant="ghost" onClick={() => setSeleccion(new Set())}>
-                  Quitar ({seleccionadas.length})
+              <Checkbox label="Elegir todos los visibles" checked={todosVisibles} onChange={alternarTodos} />
+              {seleccion.elegidos.size > 0 && (
+                <Button size="sm" variant="ghost" onClick={quitarTodos}>
+                  Quitar ({seleccion.elegidos.size})
                 </Button>
               )}
             </div>
@@ -715,7 +637,7 @@ export function ProduccionLista({ recargaToken }: Props) {
             <Card key={o.id} padding="var(--space-4)">
               <div onClick={() => abrir(o)} style={{ cursor: 'pointer' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 'var(--space-3)' }}>
-                  {casillaSeleccion(o, true)}
+                  {eligiendo && casillaSeleccion(o, true)}
                   <div style={{ minWidth: 0, flex: 1 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
                       <span className="rh-num" style={{ font: 'var(--type-body-strong)', color: 'var(--text-strong)' }}>
@@ -771,8 +693,6 @@ export function ProduccionLista({ recargaToken }: Props) {
           ))}
         </div>
       )}
-
-      {hoja && <HojaFabricacion {...hoja} onCerrar={cerrarHoja} />}
     </>
   )
 }

@@ -1,13 +1,12 @@
 import type { CellObject, SheetData } from 'write-excel-file/browser'
 import type { OrdenFabricacion } from '../types'
-import { ESTADO_ORDEN_LABEL, ORIGEN_LABEL } from './etiquetas'
 
 /* Arma la hoja de Excel de "Exportar" a partir de las órdenes. No consulta la
    base de datos ni escribe el archivo: solo transforma datos, para poder
    probarla por separado.
 
-   El formato es el de la planilla de octubre (las mismas 19 columnas, en el
-   mismo orden), más Estado y Origen al final. Qué NO lleva, a propósito: el
+   El formato es el de la planilla de octubre: las mismas 19 columnas, en el
+   mismo orden. Qué NO lleva, a propósito: el
    RUT, el teléfono, el correo ni la dirección. "Inf adicional" lleva la nota
    de producción (sin datos personales), nunca la nota original del pedido. */
 
@@ -33,9 +32,7 @@ export const COLUMNAS_PLANILLA = [
   'ID Shopify',
 ] as const
 
-export const COLUMNAS_EXPORTACION = [...COLUMNAS_PLANILLA, 'Estado', 'Origen'] as const
-
-const ANCHOS = [9, 11, 14, 12, 15, 14, 22, 16, 18, 17, 46, 4, 4, 4, 4, 7, 17, 24, 34, 13, 18]
+const ANCHOS = [9, 11, 14, 12, 15, 14, 22, 16, 18, 17, 46, 4, 4, 4, 4, 7, 17, 24, 34]
 
 /* ---------------- Región y comuna, como en la planilla ---------------- */
 
@@ -129,7 +126,7 @@ export interface HojaPedidos {
 
 /* `nombres`: nombre del cliente por id de orden (la columna Cliente). */
 export function construirHoja(ordenes: OrdenFabricacion[], nombres: Map<string, string>): HojaPedidos {
-  const encabezado: CellObject[] = COLUMNAS_EXPORTACION.map((titulo, i) => ({
+  const encabezado: CellObject[] = COLUMNAS_PLANILLA.map((titulo, i) => ({
     value: titulo,
     type: String,
     fontWeight: 'bold',
@@ -157,8 +154,6 @@ export function construirHoja(ordenes: OrdenFabricacion[], nombres: Map<string, 
     { value: horaChileComoUtc(o.pedidoCreadoEn), type: Date, format: 'dd-mm-yyyy hh:mm' } as CellObject,
     texto(nombres.get(o.id)),
     texto(o.shopifyOrderId),
-    texto(ESTADO_ORDEN_LABEL[o.estado]),
-    texto(o.origen ? ORIGEN_LABEL[o.origen] : null),
   ])
 
   return {
