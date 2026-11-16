@@ -1,18 +1,18 @@
 import type { Workbook, Worksheet } from 'exceljs'
 import type { OrdenFabricacion } from '../types'
 import { mencionaPatas } from './avisosOrden'
-import { calcularPlazo, inicioDelPlazo, PLAZO_FABRICACION_DIAS, type Calendario } from './diasHabiles'
+import { calcularPlazo, inicioDelPlazo, PLAZO_FABRICACION_DIAS, semaforoDelPlazo, type Calendario, type ColorPlazo, type SemaforoPlazo } from './diasHabiles'
 import { regionComoEnPlanilla } from './hojaPedidos'
 import { esPiezaFabricable } from './hojas'
 
-/* "Lista Pendiente": el Excel de una hoja de fabricación, con el formato de la lista que el
-   taller usa (archivos de contexto/Lista Pendiente 31-10-26.xlsx). Lleva solo las piezas que
-   siguen POR FABRICAR, en dos hojas: ordenadas por N° de pedido y agrupadas por modelo y
-   medidas. No lleva RUT, teléfono ni correo: "Notas" es la nota de producción, que ya viene
+/* El Excel de una hoja de fabricación, con el formato de la lista que el taller usa (archivos de
+   contexto/Lista Pendiente 31-10-26.xlsx): una sola hoja, ordenada por N° de pedido. Lleva TODAS las piezas
+   de la hoja (también las ya terminadas, con sus etapas marcadas); no lleva los pedidos cancelados, que la
+   pantalla avisa aparte. No lleva RUT, teléfono ni correo: "Notas" es la nota de producción, que ya viene
    sin datos personales.
 
-   Este archivo tiene dos partes: la lógica pura que decide qué fila lleva cada pieza (se
-   prueba por separado) y el escritor del archivo (ExcelJS, que se carga recién al exportar). */
+   Este archivo tiene dos partes: la lógica pura que decide qué fila lleva cada pieza (se prueba por
+   separado) y el escritor del archivo (ExcelJS, que se carga recién al exportar). */
 
 /* ---------------- Cómo se ve cada dato ---------------- */
 
@@ -89,7 +89,7 @@ export function composicionDelPedido(piezas: readonly Pick<OrdenFabricacion, 'ti
 
 /* ---------------- Las filas ---------------- */
 
-export interface FilaLista {
+export interface FilaHoja {
   pedido: string
   unidad: number
   modelo: string
@@ -99,9 +99,14 @@ export interface FilaLista {
   direccion: string
   region: string
   patas: string
-  transcurridos: number
-  faltantes: number
-  retraso: number
+  /* La pieza ya no está por fabricar (fabricada, en despacho o entregada): su plazo dejó de correr. */
+  terminada: boolean
+  /* Días hábiles; null en las piezas terminadas. */
+  transcurridos: number | null
+  faltantes: number | null
+  retraso: number | null
+  /* El semáforo del plazo; null en las piezas terminadas. */
+  plazo: SemaforoPlazo | null
   notas: string
   b: boolean
   i: boolean
@@ -110,106 +115,95 @@ export interface FilaLista {
   listo: boolean
 }
 
-export interface ListaPendiente {
-  filas: FilaLista[]
+export interface FilasHoja {
+  filas: FilaHoja[]
   pedidos: number
   piezas: number
+  /* De esas piezas, las que siguen por fabricar. */
+  porFabricar: number
   /* El calendario de feriados no cubre algún año del cálculo: los días pueden estar mal. */
   sinCalendario: boolean
 }
 
-export const esPendiente = (o: Pick<OrdenFabricacion, 'estado' | 'canceladoEn' | 'esAdicional' | 'tipo'>) =>
-  o.estado === 'por_fabricar' && o.canceladoEn === null && esPiezaFabricable(o)
+/* Una pieza de la hoja: mueble o cojín, que no esté cancelado. */
+export const esPiezaDeHoja = (o: Pick<OrdenFabricacion, 'canceladoEn' | 'esAdicional' | 'tipo'>) => o.canceladoEn === null && esPiezaFabricable(o)
 
 const esNumerico = (s: string) => /^\d+$/.test(s)
 
 /* 1204 antes que 1224; "T9001" (no numérico) después de los numéricos. */
-export const compararPedido = (a: string, b: string) => (esNumerico(a) && esNumerico(b) ? Number(a) - Number(b) : esNumerico(a) !== esNumerico(b) ? (esNumerico(a) ? -1 : 1) : a.localeCompare(b, 'es'))
+export const compararPedido = (a: string, b: string) =>
+  esNumerico(a) && esNumerico(b) ? Number(a) - Number(b) : esNumerico(a) !== esNumerico(b) ? (esNumerico(a) ? -1 : 1) : a.localeCompare(b, 'es')
 
-/* `ordenes`: todas las piezas de la hoja (también las ya fabricadas y las canceladas): las usa para
-   describir cada pedido, pero solo las pendientes llegan a la lista. */
-export function construirListaPendiente(ordenes: readonly OrdenFabricacion[], calendario: Calendario, hoy: string): ListaPendiente {
+/* `ordenes`: todas las órdenes de la hoja. Salen todas sus piezas, ordenadas por N° de pedido y unidad. */
+export function construirFilasHoja(ordenes: readonly OrdenFabricacion[], calendario: Calendario, hoy: string): FilasHoja {
   const porPedido = new Map<string, OrdenFabricacion[]>()
   for (const o of ordenes) porPedido.set(o.pedidoNumero, [...(porPedido.get(o.pedidoNumero) ?? []), o])
   const plazos = new Map<string, ReturnType<typeof calcularPlazo>>()
   let sinCalendario = false
 
-  const filas = ordenes.filter(esPendiente).map<FilaLista>((o) => {
-    const inicio = inicioDelPlazo({ fechaPedido: o.fechaPedido, plazoDesde: o.plazoDesde })
-    let plazo = plazos.get(inicio)
-    if (!plazo) {
-      plazo = calcularPlazo(inicio, hoy, calendario)
-      plazos.set(inicio, plazo)
-    }
-    sinCalendario ||= plazo.sinCalendario
-    const { medida, extra } = medidaDeLista(o.cm)
-    /* La nota, lo que sobra de la medida y la composición del pedido; sin repetir lo que ya dice la nota. */
-    const partes: string[] = []
-    for (const parte of [o.notasProduccion?.trim(), extra, composicionDelPedido(porPedido.get(o.pedidoNumero) ?? [])]) {
-      if (parte && !partes.join(' / ').toUpperCase().includes(parte.toUpperCase())) partes.push(parte)
-    }
-    const notas = partes.join(' / ')
-    return {
-      pedido: o.pedidoNumero,
-      unidad: Number(o.numero.split('-')[1]) || 0,
-      modelo: modeloDeLista(o),
-      medida,
-      lado: ladoDeLista(o.orientacion),
-      tela: telaDeLista(o),
-      direccion: direccionDeLista(o.comuna),
-      region: regionComoEnPlanilla(o.region) ?? '',
-      patas: patasDeLista(o),
-      transcurridos: plazo.transcurridos,
-      faltantes: plazo.faltantes,
-      retraso: plazo.retraso,
-      notas,
-      b: o.etapaB,
-      i: o.etapaI,
-      a: o.etapaA,
-      c: o.etapaC,
-      listo: o.listo,
-    }
-  })
+  const filas = ordenes
+    .filter(esPiezaDeHoja)
+    .map<FilaHoja>((o) => {
+      const terminada = o.estado !== 'por_fabricar'
+      let plazo: ReturnType<typeof calcularPlazo> | null = null
+      if (!terminada) {
+        const inicio = inicioDelPlazo({ fechaPedido: o.fechaPedido, plazoDesde: o.plazoDesde })
+        plazo = plazos.get(inicio) ?? calcularPlazo(inicio, hoy, calendario)
+        plazos.set(inicio, plazo)
+        sinCalendario ||= plazo.sinCalendario
+      }
+      const { medida, extra } = medidaDeLista(o.cm)
+      /* La nota, lo que sobra de la medida y la composición del pedido; sin repetir lo que ya dice la nota. */
+      const partes: string[] = []
+      for (const parte of [o.notasProduccion?.trim(), extra, composicionDelPedido(porPedido.get(o.pedidoNumero) ?? [])]) {
+        if (parte && !partes.join(' / ').toUpperCase().includes(parte.toUpperCase())) partes.push(parte)
+      }
+      return {
+        pedido: o.pedidoNumero,
+        unidad: Number(o.numero.split('-')[1]) || 0,
+        modelo: modeloDeLista(o),
+        medida,
+        lado: ladoDeLista(o.orientacion),
+        tela: telaDeLista(o),
+        direccion: direccionDeLista(o.comuna),
+        region: regionComoEnPlanilla(o.region) ?? '',
+        patas: patasDeLista(o),
+        terminada,
+        transcurridos: plazo ? plazo.transcurridos : null,
+        faltantes: plazo ? plazo.faltantes : null,
+        retraso: plazo ? plazo.retraso : null,
+        plazo: plazo ? semaforoDelPlazo(plazo) : null,
+        notas: partes.join(' / '),
+        b: o.etapaB,
+        i: o.etapaI,
+        a: o.etapaA,
+        c: o.etapaC,
+        /* Una pieza terminada siempre sale con LISTO marcado. */
+        listo: o.listo || terminada,
+      }
+    })
+    .sort((a, b) => compararPedido(a.pedido, b.pedido) || a.unidad - b.unidad)
 
-  return { filas, pedidos: new Set(filas.map((f) => f.pedido)).size, piezas: filas.length, sinCalendario }
-}
-
-/* Hoja 1: por N° de pedido (y, dentro del pedido, por unidad). */
-export const ordenarPorPedido = (filas: readonly FilaLista[]) =>
-  [...filas].sort((a, b) => compararPedido(a.pedido, b.pedido) || a.unidad - b.unidad)
-
-const numerosDeMedida = (medida: string) => (medida ? medida.split('X').map(Number) : [])
-export function compararMedida(a: string, b: string) {
-  const x = numerosDeMedida(a)
-  const y = numerosDeMedida(b)
-  for (let i = 0; i < Math.max(x.length, y.length); i++) {
-    const d = (x[i] ?? -1) - (y[i] ?? -1)
-    if (d) return d
+  return {
+    filas,
+    pedidos: new Set(filas.map((f) => f.pedido)).size,
+    piezas: filas.length,
+    porFabricar: filas.filter((f) => !f.terminada).length,
+    sinCalendario,
   }
-  return 0
-}
-
-/* Hoja 2: grupos por modelo (en orden alfabético) y, dentro de cada uno, por medida y luego por pedido. */
-export function agruparPorModelo(filas: readonly FilaLista[]) {
-  const grupos = new Map<string, FilaLista[]>()
-  for (const f of filas) grupos.set(f.modelo, [...(grupos.get(f.modelo) ?? []), f])
-  return [...grupos.keys()]
-    .sort((a, b) => a.localeCompare(b, 'es'))
-    .map((modelo) => ({
-      modelo,
-      filas: grupos.get(modelo)!.sort((a, b) => compararMedida(a.medida, b.medida) || compararPedido(a.pedido, b.pedido) || a.unidad - b.unidad),
-    }))
 }
 
 /* "2026-11-08" -> "08-11-2026". */
 const fechaCorta = (iso: string) => iso.split('-').reverse().join('-')
 
-export function subtituloDeLista(lista: Pick<ListaPendiente, 'pedidos' | 'piezas'>, hoy: string) {
-  const { pedidos, piezas } = lista
-  return `Actualizado al ${fechaCorta(hoy)} · ${pedidos} ${pedidos === 1 ? 'pedido' : 'pedidos'} · ${piezas} ${piezas === 1 ? 'pieza' : 'piezas'} · plazo máximo de fabricación: ${PLAZO_FABRICACION_DIAS} días hábiles`
+export function subtituloDeHoja(h: Pick<FilasHoja, 'pedidos' | 'piezas' | 'porFabricar'>, hoy: string) {
+  return `Actualizado al ${fechaCorta(hoy)} · ${h.pedidos} ${h.pedidos === 1 ? 'pedido' : 'pedidos'} · ${h.piezas} ${h.piezas === 1 ? 'pieza' : 'piezas'} · ${h.porFabricar} por fabricar · plazo máximo de fabricación: ${PLAZO_FABRICACION_DIAS} días hábiles`
 }
 
 /* ---------------- El archivo ---------------- */
+
+export const NOMBRE_HOJA_EXCEL = 'Hoja de fabricación'
+export const TITULO_HOJA_EXCEL = 'HOJA DE FABRICACIÓN — ORDENADA POR Nº DE PEDIDO'
 
 export const ENCABEZADOS = [
   'Nº Pedido',
@@ -233,12 +227,18 @@ export const ENCABEZADOS = [
 
 export const ANCHOS = [12, 20, 14, 12, 27, 18, 16, 17, 14, 12, 12, 50, 6, 6, 6, 6, 8]
 const AZUL = 'FF1F4E79'
-const ROJO = 'FFC00000'
 const BORDE = { style: 'thin', color: { argb: 'FFD9D9D9' } } as const
 const BORDES = { top: BORDE, left: BORDE, bottom: BORDE, right: BORDE } as const
 
+/* Los colores del plazo en las celdas de Días Hábiles Faltantes y de Retraso (los de "Bueno", "Neutral" y "Malo" de Excel). */
+export const COLORES_PLAZO: Record<ColorPlazo, { relleno: string; letra: string }> = {
+  verde: { relleno: 'FFC6EFCE', letra: 'FF006100' },
+  amarillo: { relleno: 'FFFFEB9C', letra: 'FF9C5700' },
+  rojo: { relleno: 'FFFFC7CE', letra: 'FF9C0006' },
+}
+
 /* Alto de la fila según cuántas líneas ocupa el texto más largo de las columnas que se ajustan. */
-export function altoDeFila(f: FilaLista) {
+export function altoDeFila(f: FilaHoja) {
   const lineas = Math.max(
     1,
     ...([[f.tela, ANCHOS[4]], [f.direccion, ANCHOS[5]], [f.patas, ANCHOS[7]], [f.notas, ANCHOS[11]]] as const).map(([t, w]) => Math.ceil(t.length / (w * 1.1))),
@@ -246,7 +246,7 @@ export function altoDeFila(f: FilaLista) {
   return lineas <= 1 ? 20.25 : Math.round((13.15 * lineas + 7.1) * 100) / 100
 }
 
-function escribirFila(hoja: Worksheet, f: FilaLista, relleno: string, conPedido: boolean) {
+function escribirFila(hoja: Worksheet, f: FilaHoja, relleno: string, conPedido: boolean) {
   const fila = hoja.addRow([
     conPedido ? (esNumerico(f.pedido) ? Number(f.pedido) : f.pedido) : null,
     f.modelo,
@@ -271,21 +271,22 @@ function escribirFila(hoja: Worksheet, f: FilaLista, relleno: string, conPedido:
   const ajustar = new Set([5, 6, 8, 12])
   for (let c = 1; c <= 17; c++) {
     const celda = fila.getCell(c)
-    celda.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: relleno } }
-    celda.font = c === 11 && f.retraso > 0 ? { name: 'Calibri', size: 10, bold: true, color: { argb: ROJO } } : { name: 'Calibri', size: 10 }
+    const color = f.plazo && (c === 10 || c === 11) ? COLORES_PLAZO[f.plazo.color] : null
+    celda.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: color?.relleno ?? relleno } }
+    celda.font = color ? { name: 'Calibri', size: 10, bold: true, color: { argb: color.letra } } : { name: 'Calibri', size: 10 }
     celda.alignment = { horizontal: izquierda.has(c) ? 'left' : 'center', vertical: 'middle', ...(ajustar.has(c) ? { wrapText: true } : {}) }
     celda.border = BORDES
   }
 }
 
-function prepararHoja(libro: Workbook, nombre: string, titulo: string, subtitulo: string) {
-  const hoja = libro.addWorksheet(nombre, {
+function prepararHoja(libro: Workbook, subtitulo: string) {
+  const hoja = libro.addWorksheet(NOMBRE_HOJA_EXCEL, {
     views: [{ state: 'frozen', xSplit: 0, ySplit: 3, topLeftCell: 'A4', zoomScale: 90 }],
     pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, margins: { left: 0.25, right: 0.25, top: 0.75, bottom: 0.75, header: 0.3, footer: 0.3 } },
   })
   ANCHOS.forEach((w, i) => (hoja.getColumn(i + 1).width = w))
   hoja.mergeCells('A1:L1')
-  hoja.getCell('A1').value = titulo
+  hoja.getCell('A1').value = TITULO_HOJA_EXCEL
   hoja.getCell('A1').font = { name: 'Calibri', size: 14, bold: true, color: { argb: AZUL } }
   hoja.getCell('A1').alignment = { horizontal: 'left', vertical: 'middle' }
   hoja.getRow(1).height = 24.95
@@ -305,45 +306,28 @@ function prepararHoja(libro: Workbook, nombre: string, titulo: string, subtitulo
   return hoja
 }
 
-/* Arma el archivo .xlsx con las dos hojas. ExcelJS se carga aquí (import dinámico) para no pesar en
-   el arranque de la app. */
-export async function generarLibroListaPendiente(lista: ListaPendiente, hoy: string): Promise<ArrayBuffer> {
+/* Arma el archivo .xlsx. ExcelJS se carga aquí (import dinámico) para no pesar en el arranque de la app. */
+export async function generarLibroHoja(datos: FilasHoja, hoy: string): Promise<ArrayBuffer> {
   const { default: ExcelJS } = await import('exceljs')
   const libro = new ExcelJS.Workbook()
-  const subtitulo = subtituloDeLista(lista, hoy)
-
-  const porPedido = prepararHoja(libro, 'Pedidos Pendientes', 'LISTA DE PEDIDOS PENDIENTES — ORDENADOS POR Nº DE PEDIDO', subtitulo)
+  const hoja = prepararHoja(libro, subtituloDeHoja(datos, hoy))
   let ultimo = ''
   let gris = true // el primer pedido va en blanco; cada pedido nuevo cambia de color
-  for (const f of ordenarPorPedido(lista.filas)) {
+  for (const f of datos.filas) {
     const nuevo = f.pedido !== ultimo
     if (nuevo) gris = !gris
-    escribirFila(porPedido, f, gris ? 'FFF2F2F2' : 'FFFFFFFF', nuevo)
+    escribirFila(hoja, f, gris ? 'FFF2F2F2' : 'FFFFFFFF', nuevo)
     ultimo = f.pedido
   }
-  porPedido.autoFilter = `A3:Q${porPedido.rowCount}`
-
-  const porModelo = prepararHoja(libro, 'Pedidos por Modelo y Medidas', 'LISTA DE PEDIDOS PENDIENTES — AGRUPADOS POR MODELO Y MEDIDAS', subtitulo)
-  for (const grupo of agruparPorModelo(lista.filas)) {
-    const fila = porModelo.addRow([`MODELO: ${grupo.modelo}`])
-    porModelo.mergeCells(fila.number, 1, fila.number, 17)
-    fila.height = 20.1
-    const c = fila.getCell(1)
-    c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9E1F2' } }
-    c.font = { name: 'Calibri', size: 11, bold: true, color: { argb: AZUL } }
-    c.alignment = { horizontal: 'left', vertical: 'middle' }
-    c.border = { bottom: BORDE }
-    grupo.filas.forEach((f, i) => escribirFila(porModelo, f, i % 2 === 0 ? 'FFFFFFFF' : 'FFF2F2F2', true))
-  }
-
+  hoja.autoFilter = `A3:Q${hoja.rowCount}`
   return (await libro.xlsx.writeBuffer()) as ArrayBuffer
 }
 
-/* "Lista Pendiente - Lote A 08-11-26.xlsx": sin los caracteres que Windows no admite en un nombre. */
-export function nombreArchivoLista(nombreHoja: string, hoy: string) {
+/* "Hoja de fabricación - Lote A 08-11-26.xlsx": sin los caracteres que Windows no admite en un nombre. */
+export function nombreArchivoHoja(nombreHoja: string, hoy: string) {
   const [anio, mes, dia] = hoy.split('-')
   const limpio = nombreHoja.replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim()
-  return `Lista Pendiente - ${limpio} ${dia}-${mes}-${anio.slice(2)}.xlsx`
+  return `${NOMBRE_HOJA_EXCEL} - ${limpio} ${dia}-${mes}-${anio.slice(2)}.xlsx`
 }
 
 /* Descarga el archivo en el navegador. */

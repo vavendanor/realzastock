@@ -1,12 +1,9 @@
 import type { OrdenFabricacion } from '../types'
-import { compararMedida, compararPedido, medidaDeLista, modeloDeLista } from './listaPendiente'
-import { esPiezaFabricable } from './hojas'
+import { compararPedido, esPiezaDeHoja } from './excelHoja'
 
-/* Cómo se agrupan las piezas de una hoja en las dos vistas de /hojas/:id. Lógica pura: no consulta
-   nada, solo ordena y agrupa lo que ya se leyó. Las piezas que se muestran son los muebles y
-   cojines que no están cancelados (igual que en las tarjetas y en el Excel). */
-
-export const esPiezaVisible = (o: Pick<OrdenFabricacion, 'canceladoEn' | 'esAdicional' | 'tipo'>) => o.canceladoEn === null && esPiezaFabricable(o)
+/* Cómo se agrupan las piezas de una hoja en /hojas/:id. Lógica pura: no consulta nada, solo ordena y
+   agrupa lo que ya se leyó. Las piezas que se muestran son los muebles y cojines que no están
+   cancelados (igual que en las tarjetas y en el Excel). */
 
 const unidadDe = (o: OrdenFabricacion) => Number(o.numero.split('-')[1]) || 0
 const compararPieza = (a: OrdenFabricacion, b: OrdenFabricacion) => compararPedido(a.pedidoNumero, b.pedidoNumero) || unidadDe(a) - unidadDe(b)
@@ -27,7 +24,7 @@ export function agruparPorPedido(ordenes: readonly OrdenFabricacion[], asignados
   return [...numeros].sort(compararPedido).map((pedido) => {
     const todas = ordenes.filter((o) => o.pedidoNumero === pedido)
     const activas = todas.filter((o) => o.canceladoEn === null)
-    const piezas = activas.filter(esPiezaVisible).sort(compararPieza)
+    const piezas = activas.filter(esPiezaDeHoja).sort(compararPieza)
     return {
       pedido,
       fechaPedido: activas.length ? activas.reduce((m, o) => (o.fechaPedido < m ? o.fechaPedido : m), activas[0].fechaPedido) : null,
@@ -38,26 +35,6 @@ export function agruparPorPedido(ordenes: readonly OrdenFabricacion[], asignados
   })
 }
 
-export interface GrupoModelo {
-  modelo: string
-  piezas: OrdenFabricacion[]
-}
-
-/* Un grupo por modelo ("SOFÁ OSORNO", "POL. CHILLÁN"...), en orden alfabético; dentro, por medida y luego por pedido. */
-export function agruparPorModelo(ordenes: readonly OrdenFabricacion[]): GrupoModelo[] {
-  const grupos = new Map<string, OrdenFabricacion[]>()
-  for (const o of ordenes.filter(esPiezaVisible)) {
-    const clave = modeloDeLista(o)
-    grupos.set(clave, [...(grupos.get(clave) ?? []), o])
-  }
-  return [...grupos.keys()]
-    .sort((a, b) => a.localeCompare(b, 'es'))
-    .map((modelo) => ({
-      modelo,
-      piezas: grupos.get(modelo)!.sort((a, b) => compararMedida(medidaDeLista(a.cm).medida, medidaDeLista(b.cm).medida) || compararPieza(a, b)),
-    }))
-}
-
 export interface ResumenDeHoja {
   pedidos: number
   piezas: number
@@ -65,6 +42,6 @@ export interface ResumenDeHoja {
 }
 
 export function resumirHoja(ordenes: readonly OrdenFabricacion[], asignados: readonly string[]): ResumenDeHoja {
-  const piezas = ordenes.filter(esPiezaVisible)
+  const piezas = ordenes.filter(esPiezaDeHoja)
   return { pedidos: new Set([...asignados, ...ordenes.map((o) => o.pedidoNumero)]).size, piezas: piezas.length, pendientes: piezas.filter((o) => o.estado === 'por_fabricar').length }
 }

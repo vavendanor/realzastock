@@ -89,3 +89,31 @@ const formatoDia = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Santiag
 export function hoyEnChile(ahora: Date = new Date()) {
   return formatoDia.format(ahora)
 }
+
+/* ---------------- Semáforo del plazo ---------------- */
+
+/* Cuántos días antes de vencer el plazo pasa a amarillo. */
+export const DIAS_AVISO_PLAZO = 3
+
+export type ColorPlazo = 'verde' | 'amarillo' | 'rojo'
+
+export interface SemaforoPlazo {
+  color: ColorPlazo
+  /* Días que faltan (verde y amarillo) o de atraso (rojo). */
+  dias: number
+  /* "Faltan 9 días", "Falta 1 día", "Vence hoy" o "Atrasado 4 días": una sola idea por etiqueta. */
+  texto: string
+}
+
+const diasTexto = (n: number) => `${n} ${n === 1 ? 'día' : 'días'}`
+
+/* Verde: en plazo. Amarillo: quedan 3 días o menos (el último día dice "Vence hoy"). Rojo: ya se pasó. */
+export function semaforoDelPlazo(p: Pick<Plazo, 'faltantes' | 'retraso'>): SemaforoPlazo {
+  if (p.retraso > 0) return { color: 'rojo', dias: p.retraso, texto: `Atrasado ${diasTexto(p.retraso)}` }
+  if (p.faltantes === 0) return { color: 'amarillo', dias: 0, texto: 'Vence hoy' }
+  return {
+    color: p.faltantes <= DIAS_AVISO_PLAZO ? 'amarillo' : 'verde',
+    dias: p.faltantes,
+    texto: `${p.faltantes === 1 ? 'Falta' : 'Faltan'} ${diasTexto(p.faltantes)}`,
+  }
+}

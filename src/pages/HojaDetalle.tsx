@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { AgregarPedidoPorNumero } from '../components/AgregarPedidoPorNumero'
 import { Shell } from '../components/layout/Shell'
-import { VistaPorModelo, VistaPorPedido } from '../components/PiezasDeHoja'
+import { ListaDePedidos } from '../components/PiezasDeHoja'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
 import { Dialogo } from '../components/ui/Dialogo'
@@ -25,16 +25,14 @@ import {
   renombrarHoja,
   type HojaGuardada,
 } from '../lib/hojas'
-import { construirListaPendiente, descargarArchivo, generarLibroListaPendiente, nombreArchivoLista } from '../lib/listaPendiente'
-import { agruparPorModelo, agruparPorPedido, resumirHoja } from '../lib/vistasDeHoja'
+import { construirFilasHoja, descargarArchivo, generarLibroHoja, nombreArchivoHoja } from '../lib/excelHoja'
+import { agruparPorPedido, resumirHoja } from '../lib/vistasDeHoja'
 import type { OrdenFabricacion } from '../types'
-
-type Vista = 'pedido' | 'modelo'
 
 const mensajeDe = (err: unknown, porDefecto: string) => (err instanceof Error ? err.message : porDefecto)
 const plural = (n: number, uno: string, varios: string) => `${n} ${n === 1 ? uno : varios}`
 
-/* Una hoja de fabricación: sus pedidos y piezas en vivo, en dos vistas. Se puede renombrar, agregar y
+/* Una hoja de fabricación: sus pedidos y piezas en vivo, ordenados por N° de pedido. Se puede renombrar, agregar y
    quitar pedidos, cambiar desde cuándo corre el plazo de un pedido, exportar la lista pendiente a Excel
    y eliminar la hoja. Las casillas usan el mismo guardado diferido que Pedidos. Solo administrador y
    bodega llegan hasta aquí (ruta protegida y políticas de la base de datos). */
@@ -51,7 +49,6 @@ export function HojaDetalle() {
   const [calendario, setCalendario] = useState<Calendario>(() => crearCalendario([]))
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [vista, setVista] = useState<Vista>('pedido')
 
   const [renombrando, setRenombrando] = useState(false)
   const [nombre, setNombre] = useState('')
@@ -99,7 +96,6 @@ export function HojaDetalle() {
   useEffect(() => suscribirRecarga(() => void cargar(true)), [suscribirRecarga, cargar])
 
   const porPedido = useMemo(() => agruparPorPedido(piezas, asignados), [piezas, asignados])
-  const porModelo = useMemo(() => agruparPorModelo(piezas), [piezas])
   const resumen = useMemo(() => resumirHoja(piezas, asignados), [piezas, asignados])
   const cancelados = porPedido.filter((g) => g.cancelado)
 
@@ -140,13 +136,13 @@ export function HojaDetalle() {
     setAviso(null)
     try {
       const [ordenes, feriados] = await Promise.all([listarPiezasDeHoja(id), leerCalendario()])
-      const lista = construirListaPendiente(ordenes, feriados, hoy)
-      if (lista.piezas === 0) throw new Error('La hoja no tiene piezas por fabricar: no hay nada que exportar.')
-      const archivo = nombreArchivoLista(hoja.nombre, hoy)
-      descargarArchivo(await generarLibroListaPendiente(lista, hoy), archivo)
+      const datos = construirFilasHoja(ordenes, feriados, hoy)
+      if (datos.piezas === 0) throw new Error('La hoja no tiene piezas: no hay nada que exportar.')
+      const archivo = nombreArchivoHoja(hoja.nombre, hoy)
+      descargarArchivo(await generarLibroHoja(datos, hoy), archivo)
       setAviso({
         tipo: 'ok',
-        texto: `Se descargó ${archivo} con ${plural(lista.pedidos, 'pedido', 'pedidos')} y ${plural(lista.piezas, 'pieza', 'piezas')}.${lista.sinCalendario ? ' Faltan feriados de algún año: los días hábiles pueden no ser exactos.' : ''}`,
+        texto: `Se descargó ${archivo} con ${plural(datos.pedidos, 'pedido', 'pedidos')} y ${plural(datos.piezas, 'pieza', 'piezas')} (${datos.porFabricar} por fabricar).${datos.sinCalendario ? ' Faltan feriados de algún año: los días hábiles pueden no ser exactos.' : ''}`,
       })
     } catch (err) {
       setAviso({ tipo: 'error', texto: mensajeDe(err, 'No se pudo generar el archivo.') })
@@ -286,33 +282,16 @@ export function HojaDetalle() {
               </Card>
             ))}
 
-            <div role="tablist" aria-label="Vista de la hoja" style={{ display: 'flex', gap: 'var(--space-2)' }}>
-              {(
-                [
-                  ['pedido', 'Por N° de pedido'],
-                  ['modelo', 'Por modelo y medidas'],
-                ] as const
-              ).map(([v, etiqueta]) => (
-                <Button key={v} role="tab" aria-selected={vista === v} variant={vista === v ? 'primary' : 'secondary'} onClick={() => setVista(v)}>
-                  {etiqueta}
-                </Button>
-              ))}
-            </div>
-
-            {vista === 'pedido' ? (
-              <VistaPorPedido
-                grupos={porPedido}
-                calendario={calendario}
-                hoy={hoy}
-                alQuitar={quitarPedido}
-                alFijarInicio={async (pedido, fecha) => {
-                  await fijarInicioPlazo(pedido, fecha)
-                  await cargar(true)
-                }}
-              />
-            ) : (
-              <VistaPorModelo grupos={porModelo} calendario={calendario} hoy={hoy} />
-            )}
+            <ListaDePedidos
+              grupos={porPedido}
+              calendario={calendario}
+              hoy={hoy}
+              alQuitar={quitarPedido}
+              alFijarInicio={async (pedido, fecha) => {
+                await fijarInicioPlazo(pedido, fecha)
+                await cargar(true)
+              }}
+            />
           </>
         )
       )}
