@@ -41,7 +41,20 @@ export default defineConfig(({ mode }) => ({
          instalar sin tener que hacer build cada vez. */
       devOptions: { enabled: true },
       workbox: {
+        /* ExcelJS (~0,9 MB) solo se usa al exportar una Lista Pendiente: no va en el
+           precache (que se descarga entero al instalar o actualizar la app), sino
+           que se baja la primera vez que se exporta y queda guardado. */
+        globIgnores: ['**/exceljs.min-*.js'],
         runtimeCaching: [
+          {
+            urlPattern: /\/assets\/exceljs\.min-.+\.js$/,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'exceljs',
+              expiration: { maxEntries: 2, maxAgeSeconds: 60 * 60 * 24 * 90 },
+              cacheableResponse: { statuses: [200] },
+            },
+          },
           {
             /* Fotos y siluetas del Probador de colores (~0,8 MB). No van en el
                precache general porque solo las usan administración y bodega:

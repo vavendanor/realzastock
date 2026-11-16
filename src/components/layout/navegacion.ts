@@ -1,4 +1,4 @@
-import { FileSpreadsheet, LayoutDashboard, Package, Palette, Receipt, Truck, Users, type LucideIcon } from 'lucide-react'
+import { LayoutDashboard, Package, Palette, Receipt, Truck, Users, type LucideIcon } from 'lucide-react'
 import type { UserRole } from '../../types'
 
 /* Opción de un menú desplegable. `to` es su ruta; la opción se marca como activa en esa ruta
@@ -9,6 +9,8 @@ export interface NavHijo {
   to: string
   /* Rutas que, además de `to`, la marcan como activa. */
   activaEn: RegExp
+  /* Roles que ven esta opción. Si falta, la ven todos los que ven el desplegable. */
+  roles?: UserRole[]
 }
 
 export interface NavItem {
@@ -39,6 +41,7 @@ const NAV: NavItem[] = [
     hijos: [
       { id: 'pedidos', label: 'Pedidos', to: '/pedidos', activaEn: /^\/pedidos(\/|$)/ },
       { id: 'hojas', label: 'Hojas de fabricación', to: '/hojas', activaEn: /^\/hojas(\/|$)/ },
+      { id: 'reporte', label: 'Reporte', to: '/reporte', activaEn: /^\/reporte(\/|$)/, roles: ['administrador'] },
     ],
   },
   {
@@ -49,13 +52,16 @@ const NAV: NavItem[] = [
     to: '/probador',
     roles: ['administrador', 'bodega'],
   },
-  { id: 'reporte', label: 'Reporte', icon: FileSpreadsheet, to: '/reporte', roles: ['administrador'] },
   { id: 'usuarios', label: 'Usuarios', icon: Users, to: '/usuarios', roles: ['administrador'] },
 ]
 
 /* El desplegable (o enlace) está activo si la ruta actual es de alguna de sus opciones. */
 export const hijoActivo = (hijo: NavHijo, ruta: string) => hijo.activaEn.test(ruta)
 export const itemActivo = (item: NavItem, ruta: string) => (item.hijos ? item.hijos.some((h) => hijoActivo(h, ruta)) : false)
+
+/* Las opciones de un desplegable que ve este rol. */
+export const hijosParaRol = (item: NavItem, rol: UserRole | null) =>
+  (item.hijos ?? []).filter((h) => !h.roles || (rol !== null && h.roles.includes(rol)))
 
 export function navParaRol(rol: UserRole | null): NavItem[] {
   return NAV.filter((item) => !item.roles || (rol !== null && item.roles.includes(rol)))

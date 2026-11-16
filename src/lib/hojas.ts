@@ -1,5 +1,7 @@
+import type { OrdenFabricacion } from '../types'
 import { calcularPlazo, hoyEnChile, inicioDelPlazo, type Calendario } from './diasHabiles'
 import { leerCalendario } from './feriados'
+import { aplanarOrden, COLUMNAS_ORDEN, type OrdenRaw } from './ordenes'
 import { supabase } from './supabaseClient'
 
 /* Hojas de fabricación: listas con nombre de PEDIDOS que el taller fabrica junto.
@@ -76,6 +78,13 @@ export function resumirPedido(filas: readonly FilaDePedido[]): ResumenPedido | n
     porFabricar: piezas.filter((f) => f.estado === 'por_fabricar').length,
     modelos,
   }
+}
+
+/* "08-11-2026 · 3 piezas (2 por fabricar) · SOFÁ OSORNO, POLTRONA OSORNO": cómo se describe un pedido en pantalla. */
+export function descripcionDeResumen(r: ResumenPedido) {
+  const fecha = r.fechaPedido.split('-').reverse().join('-')
+  const piezas = `${r.piezas} ${r.piezas === 1 ? 'pieza' : 'piezas'} (${r.porFabricar} por fabricar)`
+  return [fecha, piezas, r.modelos.join(', ')].filter(Boolean).join(' · ')
 }
 
 export interface HojaGuardada {
@@ -249,3 +258,43 @@ export async function crearHoja(nombre: string, pedidos: readonly string[]): Pro
   if (error) throw new Error(error.message)
   return data as string
 }
+
+/* ---------------- Una hoja en particular ---------------- */
+
+export async function obtenerHoja(id: string): Promise<HojaGuardada | null> {
+  const { data, error } = await supabase.from('hojas_fabricacion').select('id,nombre,creada_en').eq('id', id).maybeSingle()
+  if (error) throw new Error(error.message)
+  return (data as HojaGuardada | null) ?? null
+}
+
+/* Las piezas de la hoja, en vivo (vista hoja_fabricacion_piezas), con la misma forma que en Pedidos.
+   Incluye las ya fabricadas y las canceladas: la pantalla decide cómo mostrarlas. */
+export async function listarPiezasDeHoja(id: string): Promise<OrdenFabricacion[]> {
+  const filas = await traerTodo<OrdenRaw>((d, h) =>
+    // El texto de columnas no es literal: supabase-js no puede deducir la forma de las filas, que es OrdenRaw.
+    supabase.from('hoja_fabricacion_piezas').select(COLUMNAS_ORDEN).eq('hoja_id', id).order('id').range(d, h) as unknown as PromiseLike<{ data: OrdenRaw[] | null; error: { message: string } | null }>,
+  )
+  return filas.map(aplanarOrden)
+}
+
+/* Los pedidos que la hoja tiene asignados (también los que hoy no tienen piezas a la vista). */
+export async function listarPedidosDeHoja(id: string): Promise<string[]> {
+  const filas = await traerTodo<{ pedido_numero: string }>((d, h) =>
+    supabase.from('hoja_fabricacion_pedidos').select('pedido_numero').eq('hoja_id', id).order('pedido_numero').range(d, h),
+  )
+  return filas.map((f) => f.pedido_numero)
+}
+
+async function llamar<T>(funcion: string, args: Record<string, unknown>): Promise<T> {
+  const { data, error } = await supabase.rpc(funcion, args)
+  if (error) throw new Error(error.message)
+  return data as T
+}
+
+export const renombrarHoja = (id: string, nombre: string) => llamar<void>('renombrar_hoja_fabricacion', { p_hoja_id: id, p_nombre: nombre.trim() })
+/* Devuelve cuántos pedidos agregó de verdad (0 si ya estaba). */
+export const agregarPedidoAHoja = (id: string, pedido: string) => llamar<number>('agregar_pedidos_a_hoja', { p_hoja_id: id, p_pedidos: [pedido] })
+export const quitarPedidoDeHoja = (id: string, pedido: string) => llamar<number>('quitar_pedido_de_hoja', { p_hoja_id: id, p_pedido_numero: pedido })
+export const eliminarHoja = (id: string) => llamar<number>('eliminar_hoja_fabricacion', { p_hoja_id: id })
+/* "AAAA-MM-DD", o null para volver a contar desde la fecha del pedido. Vale para TODO el pedido, esté en la hoja que esté. */
+export const fijarInicioPlazo = (pedido: string, fecha: string | null) => llamar<number>('fijar_inicio_plazo', { p_pedido_numero: pedido, p_fecha: fecha })

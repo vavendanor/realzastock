@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { HojaNueva } from './pages/HojaNueva'
+import { HojaDetalle } from './pages/HojaDetalle'
 import { Hojas } from './pages/Hojas'
 import { Inicio } from './pages/Inicio'
 import { Inventario } from './pages/Inventario'
@@ -106,6 +107,15 @@ function App() {
         element={
           <ProtectedRoute roles={['administrador', 'bodega']}>
             <HojaNueva />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/hojas/:id"
+        element={
+          <ProtectedRoute roles={['administrador', 'bodega']}>
+            <HojaDetalle />
           </ProtectedRoute>
         }
       />

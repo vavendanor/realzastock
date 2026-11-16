@@ -1,6 +1,6 @@
 import { ClipboardList, Plus, RotateCw } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { Shell } from '../components/layout/Shell'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
@@ -15,53 +15,55 @@ const plural = (n: number, uno: string, varios: string) => `${n} ${n === 1 ? uno
 function TarjetaDeHoja({ hoja }: { hoja: TarjetaHoja }) {
   const porcentaje = Math.round(hoja.avance * 100)
   return (
-    <Card padding="var(--space-5)" aria-label={`Hoja ${hoja.nombre}`}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-        <div>
-          <h3 style={{ font: 'var(--type-h3)', fontSize: '18px', color: 'var(--text-strong)', overflowWrap: 'anywhere' }}>{hoja.nombre}</h3>
-          <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>Creada el {fechaDeCreacion(hoja.creadaEn)}</span>
-        </div>
+    <Link to={`/hojas/${hoja.id}`} style={{ display: 'block', textDecoration: 'none', color: 'inherit' }}>
+      <Card padding="var(--space-5)" aria-label={`Hoja ${hoja.nombre}`} style={{ height: '100%' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+          <div>
+            <h3 style={{ font: 'var(--type-h3)', fontSize: '18px', color: 'var(--text-strong)', overflowWrap: 'anywhere' }}>{hoja.nombre}</h3>
+            <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>Creada el {fechaDeCreacion(hoja.creadaEn)}</span>
+          </div>
 
-        <div style={{ font: 'var(--type-body)', color: 'var(--text-body)' }}>
-          {plural(hoja.pedidos, 'pedido', 'pedidos')} ·{' '}
-          <strong>
-            {hoja.pendientes} de {plural(hoja.piezas, 'pieza', 'piezas')}
-          </strong>{' '}
-          por fabricar
-        </div>
+          <div style={{ font: 'var(--type-body)', color: 'var(--text-body)' }}>
+            {plural(hoja.pedidos, 'pedido', 'pedidos')} ·{' '}
+            <strong>
+              {hoja.pendientes} de {plural(hoja.piezas, 'pieza', 'piezas')}
+            </strong>{' '}
+            por fabricar
+          </div>
 
-        <div
-          role="progressbar"
-          aria-label={`Avance de ${hoja.nombre}`}
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={porcentaje}
-          style={{ height: 8, borderRadius: 'var(--radius-pill)', background: 'var(--arena-300)', overflow: 'hidden' }}
-        >
-          <div style={{ width: `${porcentaje}%`, height: '100%', background: 'var(--state-success)' }} />
-        </div>
-        <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{porcentaje}% fabricado</span>
+          <div
+            role="progressbar"
+            aria-label={`Avance de ${hoja.nombre}`}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={porcentaje}
+            style={{ height: 8, borderRadius: 'var(--radius-pill)', background: 'var(--arena-300)', overflow: 'hidden' }}
+          >
+            <div style={{ width: `${porcentaje}%`, height: '100%', background: 'var(--state-success)' }} />
+          </div>
+          <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{porcentaje}% fabricado</span>
 
-        <div
-          style={{
-            font: 'var(--fw-bold) var(--text-body-sm)/1.3 var(--font-sans)',
-            color: hoja.retrasoMaximo > 0 ? 'var(--state-danger)' : 'var(--text-muted)',
-          }}
-        >
-          {hoja.retrasoMaximo > 0 ? `Retraso máximo: ${plural(hoja.retrasoMaximo, 'día hábil', 'días hábiles')}` : 'Sin retraso'}
+          <div
+            style={{
+              font: 'var(--fw-bold) var(--text-body-sm)/1.3 var(--font-sans)',
+              color: hoja.retrasoMaximo > 0 ? 'var(--state-danger)' : 'var(--text-muted)',
+            }}
+          >
+            {hoja.retrasoMaximo > 0 ? `Retraso máximo: ${plural(hoja.retrasoMaximo, 'día hábil', 'días hábiles')}` : 'Sin retraso'}
+          </div>
+          {hoja.sinCalendario && (
+            <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>
+              Faltan feriados de algún año: el retraso puede no ser exacto.
+            </span>
+          )}
         </div>
-        {hoja.sinCalendario && (
-          <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>
-            Faltan feriados de algún año: el retraso puede no ser exacto.
-          </span>
-        )}
-      </div>
-    </Card>
+      </Card>
+    </Link>
   )
 }
 
-/* Listado de las hojas de fabricación, solo lectura (el detalle de cada una llega después). La
-   base de datos limita el acceso a administrador y bodega. */
+/* Listado de las hojas de fabricación; cada tarjeta lleva a su detalle. La base de datos limita el
+   acceso a administrador y bodega. */
 export function Hojas() {
   const esEscritorio = useEsEscritorio()
   const navigate = useNavigate()

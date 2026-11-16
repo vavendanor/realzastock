@@ -87,6 +87,8 @@ export interface OrdenFabricacion {
   patas: string
   /* YYYY-MM-DD en hora de Chile. */
   fechaPedido: string
+  /* Desde cuándo se cuenta el plazo de fabricación, si se fijó a mano (null: desde la fecha del pedido). */
+  plazoDesde: string | null
   tituloShopify: string | null
   esAdicional: boolean
   etapaB: boolean

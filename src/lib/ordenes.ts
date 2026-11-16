@@ -76,12 +76,12 @@ export function fechaLocal(fecha: Date) {
 
 /* ------------------------------------------------------------------ */
 
-const COLUMNAS_ORDEN =
+export const COLUMNAS_ORDEN =
   'id,numero,pedido_numero,shopify_order_id,tipo,modelo,orientacion,cm,color,tela,region,comuna,comuna_revisar,patas,' +
-  'fecha_pedido,titulo_shopify,es_adicional,etapa_b,etapa_i,etapa_a,etapa_c,listo,listo_en,estado,cancelado_en,notas_produccion,' +
+  'fecha_pedido,plazo_desde,titulo_shopify,es_adicional,etapa_b,etapa_i,etapa_a,etapa_c,listo,listo_en,estado,cancelado_en,notas_produccion,' +
   'origen,origen_shopify,despachado_en,actualizado_en,pedido_creado_en,shopify_preparado,listo_origen'
 
-interface OrdenRaw {
+export interface OrdenRaw {
   id: string
   numero: string
   pedido_numero: string
@@ -97,6 +97,7 @@ interface OrdenRaw {
   comuna_revisar: boolean
   patas: string
   fecha_pedido: string
+  plazo_desde: string | null
   titulo_shopify: string | null
   es_adicional: boolean
   etapa_b: boolean
@@ -117,7 +118,7 @@ interface OrdenRaw {
   listo_origen: 'app' | 'shopify' | null
 }
 
-function aplanarOrden(raw: OrdenRaw): OrdenFabricacion {
+export function aplanarOrden(raw: OrdenRaw): OrdenFabricacion {
   return {
     id: raw.id,
     numero: raw.numero,
@@ -134,6 +135,7 @@ function aplanarOrden(raw: OrdenRaw): OrdenFabricacion {
     comunaRevisar: raw.comuna_revisar,
     patas: raw.patas,
     fechaPedido: raw.fecha_pedido,
+    plazoDesde: raw.plazo_desde,
     tituloShopify: raw.titulo_shopify,
     esAdicional: raw.es_adicional,
     etapaB: raw.etapa_b,
