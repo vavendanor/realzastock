@@ -1,4 +1,4 @@
-/* Menú desplegable, crear hoja, listado de hojas, permisos y /reporte, en Chrome real contra el banco de pruebas
+/* Menú desplegable, crear hoja, listado de hojas, permisos y la planilla de pedidos del Dashboard, en Chrome real contra el banco de pruebas
    (ver pruebas/README.md). */
 import ExcelJS from 'exceljs'
 import puppeteer from 'puppeteer-core'
@@ -123,7 +123,7 @@ await seccion('1. Menú de escritorio: "Pedidos" es un desplegable')
   chequeo('"Reporte" ya no es una pestaña suelta del menú', !info.reporteSuelto)
   await clicTexto(p, 'nav button', 'Pedidos', { exacto: true })
   const opcionesAdmin = await p.evaluate(() => [...document.querySelectorAll('#submenu-pedidos a')].map((a) => a.textContent.trim()))
-  chequeo('al pulsar "Pedidos" el administrador ve 3 opciones: Pedidos, Hojas de fabricación y Reporte', opcionesAdmin.join('|') === 'Pedidos|Hojas de fabricación|Reporte', opcionesAdmin.join('|'))
+  chequeo('al pulsar "Pedidos" el administrador ve 3 opciones: Pedidos, Hojas de fabricación y Despachos (sin Reporte)', opcionesAdmin.join('|') === 'Pedidos|Hojas de fabricación|Despachos', opcionesAdmin.join('|'))
   chequeo('pulsar el desplegable NO cambia de pantalla', ruta(p) === '/')
   await captura(p, '1-menu-desplegado')
   await clicTexto(p, 'nav a', 'Hojas de fabricación', { exacto: true })
@@ -145,12 +145,12 @@ await seccion('1. Menú de escritorio: "Pedidos" es un desplegable')
 
   const b = await abrir('bodega', '/pedidos')
   const opcionesBodega = await b.evaluate(() => [...document.querySelectorAll('#submenu-pedidos a')].map((a) => a.textContent.trim()))
-  chequeo('bodega ve el desplegable con solo 2 opciones (sin "Reporte")', opcionesBodega.join('|') === 'Pedidos|Hojas de fabricación', opcionesBodega.join('|'))
+  chequeo('bodega ve las mismas 3 opciones del desplegable', opcionesBodega.join('|') === 'Pedidos|Hojas de fabricación|Despachos', opcionesBodega.join('|'))
   await cerrar(b)
 }
 
 /* ================= 2. Menú del celular ================= */
-await seccion('2. Menú del celular: mini-menú de 2 opciones')
+await seccion('2. Menú del celular: mini-menú de 3 opciones')
 {
   const p = await abrir('bodega', '/', { ancho: 390, alto: 800 })
   chequeo('bodega entra a su pantalla inicial', ruta(p) === '/pedidos', ruta(p))
@@ -158,7 +158,7 @@ await seccion('2. Menú del celular: mini-menú de 2 opciones')
   chequeo('la pestaña "Pedidos" es un botón con menú (cerrado)', (await tab()) === 'false')
   await clicTexto(p, 'nav button', 'Pedidos', { exacto: true })
   const opciones = await p.evaluate(() => [...document.querySelectorAll('[role=menu] [role=menuitem]')].map((a) => a.textContent.trim()))
-  chequeo('al tocarla aparece un mini-menú con exactamente 2 opciones', opciones.join('|') === 'Pedidos|Hojas de fabricación', opciones.join('|'))
+  chequeo('al tocarla aparece un mini-menú con exactamente 3 opciones', opciones.join('|') === 'Pedidos|Hojas de fabricación|Despachos', opciones.join('|'))
   await captura(p, '2-menu-movil')
   await p.keyboard.press('Escape'); await dormir(250)
   chequeo('Escape lo cierra', (await tab()) === 'false' && !(await hay(p, '[role=menu] a', 'Hojas')))
@@ -179,9 +179,9 @@ await seccion('2. Menú del celular: mini-menú de 2 opciones')
   chequeo('en el celular no hay pestaña "Reporte" suelta', !(await hay(a, 'nav > a', 'Reporte')))
   await clicTexto(a, 'nav button', 'Pedidos', { exacto: true })
   const opcionesMovil = await a.evaluate(() => [...document.querySelectorAll('[role=menu] [role=menuitem]')].map((x) => x.textContent.trim()))
-  chequeo('en el celular, el mini-menú del administrador tiene 3 opciones (la tercera, Reporte)', opcionesMovil.join('|') === 'Pedidos|Hojas de fabricación|Reporte', opcionesMovil.join('|'))
-  await clicTexto(a, '[role=menu] a', 'Reporte', { exacto: true })
-  chequeo('...y "Reporte" lleva a /reporte', ruta(a) === '/reporte', ruta(a))
+  chequeo('en el celular, el mini-menú del administrador tiene las mismas 3 opciones', opcionesMovil.join('|') === 'Pedidos|Hojas de fabricación|Despachos', opcionesMovil.join('|'))
+  await clicTexto(a, '[role=menu] a', 'Despachos', { exacto: true })
+  chequeo('...y "Despachos" lleva a /despachos', ruta(a) === '/despachos', ruta(a))
   await cerrar(a)
 }
 
@@ -315,8 +315,8 @@ await seccion('5. Los cambios pendientes (4b) siguen intactos en las hojas')
   chequeo('el título lleva el contador', (await p.evaluate(() => document.title)).startsWith('(1) '))
   await p.evaluate(() => [...document.querySelectorAll('nav a')].find((a) => a.textContent.trim() === 'Hojas de fabricación')?.click()); await dormir(700)
   chequeo('ir a /hojas por el menú NO pide confirmación y conserva la barra', ruta(p) === '/hojas' && (await p.evaluate(() => document.querySelector('[data-contador]')?.textContent?.trim() ?? null)) === '1 cambio sin guardar en 1 mueble')
-  await p.evaluate(() => [...document.querySelectorAll('nav a')].find((a) => a.textContent.trim() === 'Reporte')?.click()); await dormir(700)
-  chequeo('salir del módulo (a Reporte) sí avisa', ruta(p) === '/hojas' && !!(await p.evaluate(() => document.querySelector('[role=dialog]')?.innerText)), ruta(p))
+  await p.evaluate(() => [...document.querySelectorAll('nav a')].find((a) => a.textContent.trim() === 'Probador de colores')?.click()); await dormir(700)
+  chequeo('salir del módulo (al Probador) sí avisa', ruta(p) === '/hojas' && !!(await p.evaluate(() => document.querySelector('[role=dialog]')?.innerText)), ruta(p))
   await cerrar(p)
 }
 
@@ -382,7 +382,7 @@ await seccion('6. /hojas: tarjetas con avance y retraso')
 /* ================= 7. Permisos ================= */
 await seccion('7. Permisos por rol')
 {
-  for (const [rol, rutas] of [['vendedor', ['/hojas', '/hojas/nueva', '/reporte']], ['bodega', ['/reporte']], [null, ['/hojas', '/hojas/nueva', '/reporte', '/pedidos']]]) {
+  for (const [rol, rutas] of [['vendedor', ['/hojas', '/hojas/nueva', '/despachos']], [null, ['/hojas', '/hojas/nueva', '/despachos', '/pedidos']]]) {
     for (const r of rutas) {
       const p = await abrir(rol, r)
       const t = await texto(p)
@@ -391,25 +391,25 @@ await seccion('7. Permisos por rol')
       await cerrar(p)
     }
   }
-  for (const [rol, r, esperado] of [['administrador', '/hojas', 'Hojas de fabricación'], ['administrador', '/hojas/nueva', 'Nueva hoja de fabricación'], ['administrador', '/reporte', 'Planilla de pedidos'], ['bodega', '/hojas', 'Hojas de fabricación'], ['bodega', '/hojas/nueva', 'Nueva hoja de fabricación']]) {
+  for (const [rol, r, esperado] of [['administrador', '/hojas', 'Hojas de fabricación'], ['administrador', '/hojas/nueva', 'Nueva hoja de fabricación'], ['administrador', '/despachos', 'Despachos'], ['bodega', '/hojas', 'Hojas de fabricación'], ['bodega', '/hojas/nueva', 'Nueva hoja de fabricación'], ['bodega', '/despachos', 'Despachos']]) {
     const p = await abrir(rol, r)
     chequeo(`${rol} SÍ entra a ${r}`, ruta(p) === r && (await texto(p)).includes(esperado), ruta(p))
     await cerrar(p)
   }
 }
 
-/* ================= 8. /reporte ================= */
-await seccion('8. /reporte: Excel de 19 columnas')
+/* ================= 8. Planilla de pedidos en el Dashboard ================= */
+await seccion('8. Dashboard: planilla de pedidos de 19 columnas (y /reporte ya no existe)')
 {
   const carpeta = join(tmpdir(), 'descargas-reporte')
   rmSync(carpeta, { recursive: true, force: true }); mkdirSync(carpeta, { recursive: true })
-  const p = await abrir('administrador', '/reporte')
+  const p = await abrir('administrador', '/')
   const cdp = await navegador.target().createCDPSession()
   await cdp.send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: carpeta })
   const t = await texto(p)
-  chequeo('la pantalla tiene el botón "Exportar a Excel (19 columnas)"', await hay(p, 'main button', 'Exportar a Excel (19 columnas)', true))
-  chequeo('no hay métricas ni gráficos (solo la exportación)', !(await p.evaluate(() => document.querySelector('svg[role=img], canvas'))) && !/KPI|Ventas del mes|Total/.test(t))
-  await captura(p, '8-reporte')
+  chequeo('el administrador ve en el Dashboard la tarjeta "Planilla de pedidos" con sus fechas Desde/Hasta', ruta(p) === '/' && /Planilla de pedidos/.test(t) && (await hay(p, 'main button', 'Exportar a Excel (19 columnas)', true)) && (await p.evaluate(() => ['Desde', 'Hasta'].every((e) => [...document.querySelectorAll('label span')].some((x) => x.textContent.trim() === e)))))
+  chequeo('no se agregaron métricas nuevas (sin gráficos)', !(await p.evaluate(() => document.querySelector('svg[role=img], canvas'))))
+  await captura(p, '8-dashboard')
   await clicTexto(p, 'main button', 'Exportar a Excel')
   let archivo = null
   for (let i = 0; i < 40 && !archivo; i++) { await dormir(250); archivo = readdirSync(carpeta).find((f) => f.endsWith('.xlsx')) }
@@ -417,7 +417,7 @@ await seccion('8. /reporte: Excel de 19 columnas')
   chequeo('el aviso confirma el archivo y las filas', /Se descargó pedidos-realza_.*\.xlsx con \d+ filas/.test(await texto(p)))
   if (archivo) {
     const libro = new ExcelJS.Workbook()
-    await libro.xlsx.readFile(`${carpeta}/${archivo}`)
+    await libro.xlsx.readFile(join(carpeta, archivo))
     const hoja = libro.worksheets[0]
     const encabezados = hoja.getRow(1).values.slice(1).filter((x) => x !== null && x !== undefined)
     chequeo('el Excel tiene 19 columnas', encabezados.length === 19, `${encabezados.length}: ${encabezados.join(' | ')}`)
@@ -428,6 +428,15 @@ await seccion('8. /reporte: Excel de 19 columnas')
   chequeo('fechas invertidas: se avisa y el botón se deshabilita', (await deshabilitado(p, 'Exportar a Excel')) === true && /posterior/.test(await texto(p)))
   chequeo('sin errores en la consola', p.errores.length === 0, p.errores.join(' | '))
   await cerrar(p)
+
+  const b = await abrir('bodega', '/')
+  chequeo('bodega no ve el Dashboard ni la planilla (va a /pedidos)', ruta(b) === '/pedidos' && !/Planilla de pedidos/.test(await texto(b)))
+  await cerrar(b)
+  for (const rol of ['administrador', 'bodega', null]) {
+    const r = await abrir(rol, '/reporte')
+    chequeo(`/reporte ya no existe: la ruta desconocida redirige (${rol ?? 'anónimo'} termina en ${ruta(r)})`, ruta(r) !== '/reporte' && (rol !== null || ruta(r) === '/login'), ruta(r))
+    await cerrar(r)
+  }
 }
 
 try { await navegador?.close() } catch { /* ya cerrado */ }

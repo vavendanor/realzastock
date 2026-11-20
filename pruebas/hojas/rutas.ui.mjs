@@ -1,8 +1,10 @@
 import puppeteer from 'puppeteer-core'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { writeFileSync } from 'node:fs'
 
 const BASE = 'http://localhost:5180'
-const SALIDA = process.argv[2] ?? 'resultado-router.json'
+const SALIDA = process.argv[2] ?? join(tmpdir(), 'resultado-router.json')
 const resultados = []
 const registrar = (nombre, ok, detalle = '') => {
   resultados.push({ nombre, ok, detalle })

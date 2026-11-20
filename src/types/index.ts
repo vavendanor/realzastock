@@ -89,6 +89,9 @@ export interface OrdenFabricacion {
   fechaPedido: string
   /* Desde cuándo se cuenta el plazo de fabricación, si se fijó a mano (null: desde la fecha del pedido). */
   plazoDesde: string | null
+  /* Día en que se programó entregar este mueble (YYYY-MM-DD), o en que salió si se despachó sin fecha. Solo lo
+     trae la pantalla de Despachos; en las demás consultas es null aunque tenga fecha. */
+  despachoProgramado: string | null
   tituloShopify: string | null
   esAdicional: boolean
   etapaB: boolean

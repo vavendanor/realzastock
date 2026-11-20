@@ -98,6 +98,8 @@ export interface OrdenRaw {
   patas: string
   fecha_pedido: string
   plazo_desde: string | null
+  /* Solo viene si la consulta lo pide (Despachos). */
+  despacho_programado?: string | null
   titulo_shopify: string | null
   es_adicional: boolean
   etapa_b: boolean
@@ -136,6 +138,7 @@ export function aplanarOrden(raw: OrdenRaw): OrdenFabricacion {
     patas: raw.patas,
     fechaPedido: raw.fecha_pedido,
     plazoDesde: raw.plazo_desde,
+    despachoProgramado: raw.despacho_programado ?? null,
     tituloShopify: raw.titulo_shopify,
     esAdicional: raw.es_adicional,
     etapaB: raw.etapa_b,

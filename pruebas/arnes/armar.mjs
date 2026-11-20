@@ -130,6 +130,14 @@ rep(`    if (nombre === 'avanzar_estado_orden') {`, `    if (['crear_hoja_fabric
     if (nombre === 'fijar_inicio_plazo') return fijarInicio(args as unknown as Record<string, unknown>)
     if (nombre === 'avanzar_estado_orden') {`)
 
+/* gte y lte ignoran los valores vacíos, como Postgres (un null no cumple ninguna comparación). */
+rep("else if (prop === 'gte') filtros.push((f) => String(f[a[0] as string]) >= String(a[1]))", "else if (prop === 'gte') filtros.push((f) => f[a[0] as string] != null && String(f[a[0] as string]) >= String(a[1]))")
+rep("else if (prop === 'lte') filtros.push((f) => String(f[a[0] as string]) <= String(a[1]))", "else if (prop === 'lte') filtros.push((f) => f[a[0] as string] != null && String(f[a[0] as string]) <= String(a[1]))")
+
+/* Despachos (0018): funciones del banco de pruebas, en despachos-falso.ts. */
+rep("/* ---- Consultas ---- */", readFileSync(`${AQUI}/despachos-falso.ts`, 'utf8') + "\n/* ---- Consultas ---- */")
+rep("    if (nombre === 'fijar_inicio_plazo')", "    if (['programar_despacho', 'quitar_despacho_programado', 'marcar_despachado'].includes(nombre)) return funcionDespacho(nombre, args as unknown as Record<string, unknown>)\n    if (nombre === 'fijar_inicio_plazo')")
+
 mkdirSync(`${RAIZ}/preview-tmp`, { recursive: true })
 writeFileSync(`${RAIZ}/preview-tmp/supabaseFalso.ts`, s)
 copyFileSync(`${AQUI}/datos.json`, `${RAIZ}/preview-tmp/datos.json`)

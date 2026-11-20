@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
-import { hijoActivo, hijosParaRol, itemActivo, navParaRol, type NavItem } from './navegacion'
+import { hijoActivo, itemActivo, navParaRol, type NavItem } from './navegacion'
 
 const estiloTab = (activo: boolean) =>
   ({
@@ -34,7 +34,6 @@ function contenidoTab(item: NavItem, activo: boolean) {
    opción, al tocar fuera o con Escape. */
 function TabConMenu({ item }: { item: NavItem }) {
   const { pathname } = useLocation()
-  const { rol } = useAuth()
   const [abierto, setAbierto] = useState(false)
   const raiz = useRef<HTMLDivElement>(null)
   const activo = itemActivo(item, pathname)
@@ -79,7 +78,7 @@ function TabConMenu({ item }: { item: NavItem }) {
             zIndex: 30,
           }}
         >
-          {hijosParaRol(item, rol).map((hijo) => {
+          {item.hijos!.map((hijo) => {
             const hijoOn = hijoActivo(hijo, pathname)
             return (
               <NavLink

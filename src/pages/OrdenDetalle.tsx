@@ -1,6 +1,5 @@
 import { ArrowLeft, ArrowRight, ClipboardList, FileDown, MapPin, Phone, TriangleAlert, User } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
-import { flushSync } from 'react-dom'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { CasillaEtapa } from '../components/CasillaEtapa'
 import { ComprobanteDespacho } from '../components/ComprobanteDespacho'
@@ -10,9 +9,10 @@ import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
 import { EstadoOrdenBadge } from '../components/ui/EstadoOrdenBadge'
 import { useCambiosPendientes } from '../hooks/useCambiosPendientes'
+import { useComprobante } from '../hooks/useComprobante'
 import { useEsEscritorio } from '../hooks/useMediaQuery'
 import { faltaColorTela, mencionaPatas, preparadoPorShopify, shopifyDesmarco } from '../lib/avisosOrden'
-import { imprimirConTitulo } from '../lib/comprobante'
+import { mueblesDeDespacho, salenADespacho } from '../lib/despachos'
 import { formatearFechaHora, formatearTelefono, normalizarTelefono, telefonoValido } from '../lib/format'
 import {
   avanzarEstadoOrden,
@@ -40,7 +40,7 @@ export function OrdenDetalle() {
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [guardando, setGuardando] = useState(false)
-  const [emitidoEn, setEmitidoEn] = useState(() => new Date().toISOString())
+  const { emitidoEn, imprimir } = useComprobante()
 
   /* `silenciosa`: vuelve a pedir la orden sin mostrar "Cargando...", para no hacer
      parpadear la pantalla después de guardar cambios. */
@@ -113,19 +113,10 @@ export function OrdenDetalle() {
 
   /* El comprobante es por pedido: lista los muebles del pedido que salen a
      despacho (en despacho o entregados). Se ofrece cuando esta orden ya salió. */
-  const salenADespacho = (o: { estado: string; canceladoEn: string | null }) =>
-    o.canceladoEn === null && (o.estado === 'en_despacho' || o.estado === 'entregado')
-  const mueblesDelDespacho = [orden, ...hermanas]
-    .filter(salenADespacho)
-    .sort((a, b) => a.numero.localeCompare(b.numero, 'es', { numeric: true }))
+  const mueblesDelDespacho = mueblesDeDespacho(orden, hermanas)
   const puedeVerComprobante = salenADespacho(orden)
 
-  const descargarComprobante = () => {
-    /* flushSync: la hora de emisión tiene que estar pintada ANTES de abrir el
-       diálogo de impresión, y un setState normal se aplicaría después. */
-    flushSync(() => setEmitidoEn(new Date().toISOString()))
-    imprimirConTitulo(`Comprobante de despacho ${orden.pedidoNumero}`)
-  }
+  const descargarComprobante = () => imprimir(orden.pedidoNumero)
 
   const telefonoLegible = (valor: string) => {
     const digitos = normalizarTelefono(valor)

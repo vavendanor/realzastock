@@ -185,11 +185,12 @@ datos.filas.forEach((f, i) => {
   malo(eq(t.slice(1, 8), [f.modelo, f.medida, f.lado, f.tela, f.direccion, f.region, f.patas]), `texto${r}`)
   malo(t[11] === f.notas, `notas${r}`)
   if (f.terminada) malo(eq(t.slice(8, 11), ['', '', '']) && [9, 10, 11].every((c) => fila.getCell(c).value === null), `dias-vacios${r}`)
-  else malo(eq(t.slice(8, 11), [String(f.transcurridos), String(f.faltantes), String(f.retraso)]) && [9, 10, 11].every((c) => typeof fila.getCell(c).value === 'number'), `dias${r}`)
+  else malo(eq(t.slice(8, 11), [String(f.transcurridos), String(f.faltantes), f.retraso ? String(f.retraso) : '']) && [9, 10].every((c) => typeof fila.getCell(c).value === 'number') && (f.retraso ? typeof fila.getCell(11).value === 'number' : fila.getCell(11).value === null), `dias${r}`)
   malo(eq(t.slice(12), [f.b ? 'X' : '', f.i ? 'X' : '', f.a ? 'X' : '', f.c ? 'X' : '', f.listo ? 'X' : '']), `marcas${r}`)
   const modelo = relleno === 'FFFFFFFF' ? refBlanca : refGris
   for (let c = 1; c <= 17; c++) {
-    if ((c === 10 || c === 11) && !f.terminada) {
+    /* Faltantes lleva el color del plazo; Retraso solo se pinta (de rojo) si hay retraso: sin retraso la celda va vacía y sin color. */
+    if (!f.terminada && (c === 10 || (c === 11 && f.retraso > 0))) {
       const [fondo, letra] = COL[f.plazo.color]
       const celda = fila.getCell(c)
       malo(celda.fill.fgColor.argb === fondo && celda.font.color.argb === letra && celda.font.bold === true && celda.font.size === 10, `color-plazo ${celda.address}`)
@@ -202,7 +203,12 @@ datos.filas.forEach((f, i) => {
 })
 chequeo('cada celda de las 15 filas (texto, números, marcas y estilo) coincide con lo esperado y con la referencia', todoOk, detalle.slice(0, 600))
 chequeo('piezas terminadas: LISTO con "X" (columna Q) y días vacíos', ['1000', '1300', '1301'].length === 3 && datos.filas.every((f, i) => !f.terminada || (g.getRow(4 + i).getCell(17).value === 'X' && g.getRow(4 + i).getCell(9).value === null)))
-chequeo('verde, amarillo y rojo en las celdas de Faltantes y Retraso (ambas) de las piezas por fabricar', casosSemaforo.every(([x, , color]) => { const i = datos.filas.findIndex((f) => f.pedido === String(x)); return [10, 11].every((c) => g.getRow(4 + i).getCell(c).fill.fgColor.argb === COL[color][0]) }))
+chequeo('verde, amarillo y rojo en la celda de Faltantes de las piezas por fabricar', casosSemaforo.every(([x, , color]) => { const i = datos.filas.findIndex((f) => f.pedido === String(x)); return g.getRow(4 + i).getCell(10).fill.fgColor.argb === COL[color][0] }))
+chequeo('la celda de Retraso queda VACÍA y sin color cuando no hay retraso, y roja con retraso real', datos.filas.every((f, i) => {
+  const c = g.getRow(4 + i).getCell(11)
+  if (!f.terminada && f.retraso > 0) return c.value === f.retraso && c.fill.fgColor.argb === COL.rojo[0] && c.font.color.argb === COL.rojo[1] && c.font.bold === true
+  return c.value === null && c.font.color?.argb !== COL.rojo[1] && !['FFC6EFCE', 'FFFFEB9C', 'FFFFC7CE'].includes(c.fill.fgColor.argb)
+}))
 chequeo('el número de pedido solo en la primera fila de cada pedido (el 1000 tiene 3 filas)', g.getCell('A5').value === 1000 && g.getCell('A6').value === null && g.getCell('A7').value === null && g.getCell('A4').value === 999)
 chequeo('zebra por pedido: 999 blanco, 1000 gris en sus 3 filas, 1100 blanco', ['FFFFFFFF', 'FFF2F2F2', 'FFF2F2F2', 'FFF2F2F2', 'FFFFFFFF'].every((c, i) => g.getRow(4 + i).getCell(1).fill.fgColor.argb === c))
 const todo = []

@@ -9,8 +9,6 @@ export interface NavHijo {
   to: string
   /* Rutas que, además de `to`, la marcan como activa. */
   activaEn: RegExp
-  /* Roles que ven esta opción. Si falta, la ven todos los que ven el desplegable. */
-  roles?: UserRole[]
 }
 
 export interface NavItem {
@@ -41,7 +39,7 @@ const NAV: NavItem[] = [
     hijos: [
       { id: 'pedidos', label: 'Pedidos', to: '/pedidos', activaEn: /^\/pedidos(\/|$)/ },
       { id: 'hojas', label: 'Hojas de fabricación', to: '/hojas', activaEn: /^\/hojas(\/|$)/ },
-      { id: 'reporte', label: 'Reporte', to: '/reporte', activaEn: /^\/reporte(\/|$)/, roles: ['administrador'] },
+      { id: 'despachos', label: 'Despachos', to: '/despachos', activaEn: /^\/despachos(\/|$)/ },
     ],
   },
   {
@@ -59,10 +57,6 @@ const NAV: NavItem[] = [
 export const hijoActivo = (hijo: NavHijo, ruta: string) => hijo.activaEn.test(ruta)
 export const itemActivo = (item: NavItem, ruta: string) => (item.hijos ? item.hijos.some((h) => hijoActivo(h, ruta)) : false)
 
-/* Las opciones de un desplegable que ve este rol. */
-export const hijosParaRol = (item: NavItem, rol: UserRole | null) =>
-  (item.hijos ?? []).filter((h) => !h.roles || (rol !== null && h.roles.includes(rol)))
-
 export function navParaRol(rol: UserRole | null): NavItem[] {
   return NAV.filter((item) => !item.roles || (rol !== null && item.roles.includes(rol)))
 }
@@ -75,9 +69,9 @@ export function rutaInicial(rol: UserRole | null): string | null {
   return null
 }
 
-/* Las pantallas de producción: Pedidos (lista y detalle de un mueble) y las hojas de
-   fabricación. Los cambios de casillas sin guardar se comparten entre ellas; al salir
+/* Las pantallas de producción: Pedidos (lista y detalle de un mueble), las hojas de
+   fabricación y los despachos. Los cambios de casillas sin guardar se comparten entre ellas; al salir
    de este grupo se avisa. */
 export function esRutaDeProduccion(ruta: string) {
-  return /^\/(pedidos|hojas)(\/|$)/.test(ruta)
+  return /^\/(pedidos|hojas|despachos)(\/|$)/.test(ruta)
 }

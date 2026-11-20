@@ -8,9 +8,9 @@ import { Inventario } from './pages/Inventario'
 import { InventarioForm } from './pages/InventarioForm'
 import { Login } from './pages/Login'
 import { OrdenDetalle } from './pages/OrdenDetalle'
+import { Despachos } from './pages/Despachos'
 import { Pedidos } from './pages/Pedidos'
 import { Probador } from './pages/Probador'
-import { Reporte } from './pages/Reporte'
 import { UsuarioNuevo } from './pages/UsuarioNuevo'
 import { Usuarios } from './pages/Usuarios'
 import { Ventas } from './pages/Ventas'
@@ -18,9 +18,8 @@ import { VentaNueva } from './pages/VentaNueva'
 
 /* Módulos listos: Inventario (administrador), Ventas (administrador y
    vendedor), Pedidos (órdenes de fabricación de Shopify: administrador y
-   bodega), Hojas de fabricación (administrador y bodega), Probador de
-   colores (administrador y bodega), Reporte y Usuarios (exclusivos de
-   administrador). */
+   bodega), Hojas de fabricación y Despachos (administrador y bodega), Probador de
+   colores (administrador y bodega) y Usuarios (exclusivo de administrador). */
 function App() {
   return (
     <Routes>
@@ -121,10 +120,10 @@ function App() {
       />
 
       <Route
-        path="/reporte"
+        path="/despachos"
         element={
-          <ProtectedRoute roles={['administrador']}>
-            <Reporte />
+          <ProtectedRoute roles={['administrador', 'bodega']}>
+            <Despachos />
           </ProtectedRoute>
         }
       />

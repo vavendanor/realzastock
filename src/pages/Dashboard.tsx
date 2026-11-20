@@ -1,6 +1,7 @@
 import { Banknote, Factory, TriangleAlert } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { ExportarPedidos } from '../components/ExportarPedidos'
 import { Shell } from '../components/layout/Shell'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
@@ -239,6 +240,8 @@ export function Dashboard() {
         {alertasStock}
         {ultimos}
       </div>
+
+      <ExportarPedidos />
     </Shell>
   )
 }

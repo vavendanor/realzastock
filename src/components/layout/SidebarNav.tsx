@@ -4,13 +4,12 @@ import { NavLink, useLocation } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
 import { useCambiosPendientes } from '../../hooks/useCambiosPendientes'
 import { ROL_LABEL } from '../../lib/usuarios'
-import { hijoActivo, hijosParaRol, itemActivo, navParaRol, type NavItem } from './navegacion'
+import { hijoActivo, itemActivo, navParaRol, type NavItem } from './navegacion'
 
 /* Elemento del menú con opciones: un botón que despliega (o pliega) sus opciones. Se abre solo
    al entrar a una de sus pantallas, y la persona puede plegarlo cuando quiera. */
 function GrupoDesplegable({ item, estilo }: { item: NavItem; estilo: CSSProperties }) {
   const { pathname } = useLocation()
-  const { rol } = useAuth()
   const dentro = itemActivo(item, pathname)
   const [abierto, setAbierto] = useState(dentro)
   const Icono = item.icon
@@ -41,7 +40,7 @@ function GrupoDesplegable({ item, estilo }: { item: NavItem; estilo: CSSProperti
       </button>
       {abierto && (
         <div id={idLista} style={{ display: 'flex', flexDirection: 'column', gap: '2px', marginTop: '2px' }}>
-          {hijosParaRol(item, rol).map((hijo) => {
+          {item.hijos!.map((hijo) => {
             const activo = hijoActivo(hijo, pathname)
             return (
               <NavLink

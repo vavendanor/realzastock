@@ -170,7 +170,7 @@ export function construirTarjetas(
 const PAGINA = 1000
 
 /* Trae todas las filas de una consulta, de a 1000 (el máximo que entrega la API). */
-async function traerTodo<T>(pedir: (desde: number, hasta: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>): Promise<T[]> {
+export async function traerTodo<T>(pedir: (desde: number, hasta: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>): Promise<T[]> {
   const filas: T[] = []
   for (let desde = 0; ; desde += PAGINA) {
     const { data, error } = await pedir(desde, desde + PAGINA - 1)

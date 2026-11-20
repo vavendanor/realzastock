@@ -230,7 +230,7 @@ const AZUL = 'FF1F4E79'
 const BORDE = { style: 'thin', color: { argb: 'FFD9D9D9' } } as const
 const BORDES = { top: BORDE, left: BORDE, bottom: BORDE, right: BORDE } as const
 
-/* Los colores del plazo en las celdas de Días Hábiles Faltantes y de Retraso (los de "Bueno", "Neutral" y "Malo" de Excel). */
+/* Los colores del plazo en las celdas de Días Hábiles Faltantes y de Retraso (esta, solo si hay retraso) (los de "Bueno", "Neutral" y "Malo" de Excel). */
 export const COLORES_PLAZO: Record<ColorPlazo, { relleno: string; letra: string }> = {
   verde: { relleno: 'FFC6EFCE', letra: 'FF006100' },
   amarillo: { relleno: 'FFFFEB9C', letra: 'FF9C5700' },
@@ -258,7 +258,7 @@ function escribirFila(hoja: Worksheet, f: FilaHoja, relleno: string, conPedido: 
     f.patas,
     f.transcurridos,
     f.faltantes,
-    f.retraso,
+    f.retraso ? f.retraso : null, // sin retraso, la celda queda vacía
     f.notas,
     f.b ? 'X' : '',
     f.i ? 'X' : '',
@@ -271,7 +271,8 @@ function escribirFila(hoja: Worksheet, f: FilaHoja, relleno: string, conPedido: 
   const ajustar = new Set([5, 6, 8, 12])
   for (let c = 1; c <= 17; c++) {
     const celda = fila.getCell(c)
-    const color = f.plazo && (c === 10 || c === 11) ? COLORES_PLAZO[f.plazo.color] : null
+    /* Faltantes lleva el color del plazo; Retraso solo se pinta (de rojo) cuando hay retraso de verdad. */
+    const color = f.plazo && (c === 10 || (c === 11 && f.retraso)) ? COLORES_PLAZO[f.plazo.color] : null
     celda.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: color?.relleno ?? relleno } }
     celda.font = color ? { name: 'Calibri', size: 10, bold: true, color: { argb: color.letra } } : { name: 'Calibri', size: 10 }
     celda.alignment = { horizontal: izquierda.has(c) ? 'left' : 'center', vertical: 'middle', ...(ajustar.has(c) ? { wrapText: true } : {}) }

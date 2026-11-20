@@ -421,15 +421,17 @@ await seccion('9. Exportar a Excel desde la hoja')
         if ([9, 10, 11].some((c) => fila.getCell(c).value !== null)) { okFilas = false; det += `dias-no-vacios ${o.numero}; ` }
       } else {
         const t = habiles(o.fecha_pedido, hoyChile())
-        const esperado = [t, Math.max(0, 14 - t), Math.max(0, t - 14)]
+        const esperado = [t, Math.max(0, 14 - t), t > 14 ? t - 14 : null] // sin retraso, la celda va vacía
         const real2 = [9, 10, 11].map((c) => fila.getCell(c).value)
         if (JSON.stringify(real2) !== JSON.stringify(esperado)) { okFilas = false; det += `dias ${o.numero}: ${real2} vs ${esperado}; ` }
         const [fondo] = colorExcel(t)
-        if (fila.getCell(10).fill.fgColor.argb !== fondo || fila.getCell(11).fill.fgColor.argb !== fondo) { okFilas = false; det += `color ${o.numero}; ` }
+        if (fila.getCell(10).fill.fgColor.argb !== fondo) { okFilas = false; det += `color-faltantes ${o.numero}; ` }
+        const retrasoC = fila.getCell(11)
+        if (t > 14 ? retrasoC.fill.fgColor.argb !== 'FFFFC7CE' : ['FFC6EFCE', 'FFFFEB9C', 'FFFFC7CE'].includes(retrasoC.fill.fgColor.argb)) { okFilas = false; det += `color-retraso ${o.numero}; ` }
       }
       if (String(fila.getCell(2).value) !== modeloDeLista(o)) { okFilas = false; det += `modelo ${o.numero}; ` }
     })
-    chequeo('pieza por pieza: marcas B, I, A, C y LISTO ("X" también en las terminadas), días hábiles vacíos en las terminadas y color del plazo en las demás', okFilas, det.slice(0, 500))
+    chequeo('pieza por pieza: retraso vacío si no hay, marcas B, I, A, C y LISTO ("X" también en las terminadas), días hábiles vacíos en las terminadas y color del plazo en las demás', okFilas, det.slice(0, 500))
     const iBpieza = esperadas.findIndex((o) => o.numero === conB.numero)
     chequeo('una pieza por fabricar con solo B e I marcadas sale con "X" en B e I y sin LISTO', h1.getRow(4 + iBpieza).getCell(13).value === 'X' && h1.getRow(4 + iBpieza).getCell(14).value === 'X' && h1.getRow(4 + iBpieza).getCell(17).value === '')
     const todo = []
