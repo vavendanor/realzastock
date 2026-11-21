@@ -8,6 +8,7 @@ import { Dialogo } from '../components/ui/Dialogo'
 import { EstadoOrdenBadge } from '../components/ui/EstadoOrdenBadge'
 import { Input } from '../components/ui/Input'
 import { Paginador } from '../components/ui/Paginador'
+import { Select } from '../components/ui/Select'
 import { useCambiosPendientes } from '../hooks/useCambiosPendientes'
 import { hoyEnChile } from '../lib/diasHabiles'
 import {
@@ -15,6 +16,16 @@ import {
   agruparPorFecha,
   aplanarDespachos,
   bloquesDeFilas,
+  coincideFiltros,
+  FILTRO_RETIRO,
+  FILTRO_SIN_DIRECCION,
+  FILTRO_SIN_REGION,
+  FILTROS_DESPACHOS_VACIOS,
+  hayFiltrosDespachos,
+  opcionesDeComuna,
+  opcionesDeRegion,
+  type FiltrosDespachos,
+  type OpcionDeFiltro,
   destinoDe,
   esDespachable,
   etiquetaDeFecha,
@@ -207,6 +218,12 @@ function GrupoDeMuebles({ titulo, subtitulo, muebles, partes, elegidos, seleccio
 /* Despachos: qué muebles fabricados esperan entrega (por comuna, sin dirección y retiros en tienda), programar su
    fecha de salida, verlos por fecha, quitarlos de una fecha y marcarlos como despachados. Solo administrador y bodega
    llegan hasta aquí (ruta protegida y políticas de la base de datos). */
+const conConteo = (o: OpcionDeFiltro) => ({ value: o.valor, label: `${o.etiqueta} (${o.total})` })
+const etiquetaDeRegion = (v: string) => (v === FILTRO_SIN_REGION ? 'Región sin informar' : v === FILTRO_SIN_DIRECCION ? 'Sin dirección' : v === FILTRO_RETIRO ? 'Retiro en tienda' : v)
+/* La opción elegida siempre se ve en el selector, aunque con el texto de búsqueda ya no tenga muebles ("(0)"). */
+const conSeleccion = (opciones: { value: string; label: string }[], elegida: string, etiqueta: (v: string) => string) =>
+  elegida === '' || opciones.some((o) => o.value === elegida) ? opciones : [...opciones, { value: elegida, label: `${etiqueta(elegida)} (0)` }]
+
 export function Despachos() {
   const cp = useCambiosPendientes()
   const { conciliar, suscribirRecarga } = cp
@@ -219,6 +236,7 @@ export function Despachos() {
   const [vista, setVista] = useState<Vista>('por_despachar')
   const [elegidosIds, setElegidos] = useState<ReadonlySet<string>>(() => new Set())
   const [pagina, setPagina] = useState(1)
+  const [filtros, setFiltros] = useState<FiltrosDespachos>(FILTROS_DESPACHOS_VACIOS)
   const [porPagina, setPorPagina] = useState<number>(POR_PAGINA_INICIAL)
   const [fecha, setFecha] = useState(() => manana(hoy))
   const [trabajando, setTrabajando] = useState(false)
@@ -250,7 +268,11 @@ export function Despachos() {
   /* Después de guardar casillas desde la barra de abajo, se vuelve a pedir lo que dice el servidor. */
   useEffect(() => suscribirRecarga(() => void cargar(true)), [suscribirRecarga, cargar])
 
-  const porDestino = useMemo(() => agruparPorDestino(ordenes), [ordenes])
+  /* Los filtros solo recortan lo que se ve en "Por despachar". Lo elegido no depende de ellos (ver `fuera` más abajo). */
+  const visibles = useMemo(() => ordenes.filter((o) => coincideFiltros(o, filtros)), [ordenes, filtros])
+  const opcionesRegion = useMemo(() => opcionesDeRegion(ordenes, filtros.busqueda), [ordenes, filtros.busqueda])
+  const opcionesComuna = useMemo(() => opcionesDeComuna(ordenes, filtros.region, filtros.busqueda), [ordenes, filtros.region, filtros.busqueda])
+  const porDestino = useMemo(() => agruparPorDestino(visibles), [visibles])
   const porFecha = useMemo(() => agruparPorFecha(ordenes), [ordenes])
   /* La lista de "Por despachar" se pagina por MUEBLES, en el orden de pantalla. Cuando un grupo (una comuna) queda cortado
      entre dos páginas, la segunda repite su encabezado con la etiqueta "continuación". */
@@ -272,6 +294,13 @@ export function Despachos() {
   const idsElegidos = elegidos.map((o) => o.id)
   const idsSet = useMemo(() => new Set(elegidos.map((o) => o.id)), [elegidos])
   const conFecha = elegidos.filter((o) => o.despachoProgramado)
+
+  /* Al cambiar un filtro se vuelve a la página 1: la lista nueva puede ser más corta que la página en que se estaba. */
+  const cambiarFiltros = (parcial: Partial<FiltrosDespachos>) => {
+    setPagina(1)
+    setFiltros((f) => ({ ...f, ...parcial }))
+  }
+  const fuera = vista === 'por_despachar' ? elegidos.filter((o) => !coincideFiltros(o, filtros)).length : 0
 
   const alternar = (ids: readonly string[], elegir?: boolean) =>
     setElegidos((previos) => {
@@ -378,6 +407,41 @@ export function Despachos() {
               <span style={{ font: 'var(--type-body)', color: 'var(--text-muted)' }}>No hay muebles fabricados esperando entrega.</span>
             </Card>
           )}
+          {totalPorDespachar > 0 && (
+            <Card padding="var(--space-4) var(--space-5)" aria-label="Filtros">
+              <div data-filtros-despachos style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 'var(--space-3)', alignItems: 'end' }}>
+                <Select
+                  label="Región"
+                  size="sm"
+                  value={filtros.region}
+                  onChange={(e) => cambiarFiltros({ region: e.target.value, comuna: '' })}
+                  options={conSeleccion([{ value: '', label: 'Todas' }, ...opcionesRegion.map(conConteo)], filtros.region, etiquetaDeRegion)}
+                />
+                <Select
+                  label="Comuna"
+                  size="sm"
+                  value={filtros.comuna}
+                  disabled={filtros.region === FILTRO_SIN_DIRECCION || filtros.region === FILTRO_RETIRO}
+                  onChange={(e) => cambiarFiltros({ comuna: e.target.value })}
+                  options={conSeleccion([{ value: '', label: 'Todas' }, ...opcionesComuna.map(conConteo)], filtros.comuna, (v) => v)}
+                />
+                <Input label="N° de pedido" size="sm" placeholder="Ej. 1180" value={filtros.busqueda} onChange={(e) => cambiarFiltros({ busqueda: e.target.value })} />
+                <Button size="sm" variant="secondary" disabled={!hayFiltrosDespachos(filtros)} onClick={() => cambiarFiltros(FILTROS_DESPACHOS_VACIOS)}>
+                  Limpiar filtros
+                </Button>
+              </div>
+            </Card>
+          )}
+          {totalPorDespachar > 0 && filas.length === 0 && (
+            <Card>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', alignItems: 'flex-start' }}>
+                <span data-sin-resultados style={{ font: 'var(--type-body)', color: 'var(--text-muted)' }}>Ningún mueble coincide con los filtros.</span>
+                <Button size="sm" variant="secondary" onClick={() => cambiarFiltros(FILTROS_DESPACHOS_VACIOS)}>
+                  Limpiar filtros
+                </Button>
+              </div>
+            </Card>
+          )}
           {bloques.map((b, i) => (
             <div key={`${b.claveGrupo}|${i}`} style={{ display: 'contents' }}>
               {b.nuevaRegion && <EncabezadoRegion nombre={b.region} total={totalDeRegion(b.region)} continua={b.continua} />}
@@ -453,6 +517,7 @@ export function Despachos() {
           <div data-barra-despacho style={{ display: 'flex', gap: 'var(--space-4)', alignItems: 'flex-end', flexWrap: 'wrap' }}>
             <strong style={{ font: 'var(--type-body-strong)', color: 'var(--text-strong)', alignSelf: 'center' }}>
               {plural(elegidos.length, 'mueble elegido', 'muebles elegidos')}
+              {fuera > 0 && <span data-fuera-del-filtro style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}> · {fuera} fuera del filtro</span>}
             </strong>
             <Input label="Fecha del despacho" type="date" size="sm" value={fecha} min={hoy} onChange={(e) => setFecha(e.target.value)} wrapperStyle={{ minWidth: 170 }} error={fecha && fecha < hoy ? 'No puede ser anterior a hoy.' : undefined} />
             <Button size="sm" disabled={trabajando || fechaInvalida} onClick={() => void programar()}>

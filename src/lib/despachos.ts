@@ -111,6 +111,84 @@ export function agruparPorDestino(ordenes: readonly OrdenFabricacion[]): GruposD
   }
 }
 
+/* ---------------- Filtros de "Por despachar" ---------------- */
+
+/* Valores especiales del selector de región, para ver solos los grupos que no son una región. */
+export const FILTRO_SIN_REGION = '__sin_region'
+export const FILTRO_SIN_DIRECCION = '__sin_direccion'
+export const FILTRO_RETIRO = '__retiro'
+
+export interface FiltrosDespachos {
+  /* '' = todas; el nombre de una región; o uno de los valores especiales de arriba. */
+  region: string
+  /* '' = todas; la clave de una comuna (en minúsculas). */
+  comuna: string
+  /* Texto del N° de pedido. */
+  busqueda: string
+}
+
+export const FILTROS_DESPACHOS_VACIOS: FiltrosDespachos = { region: '', comuna: '', busqueda: '' }
+export const hayFiltrosDespachos = (f: FiltrosDespachos) => f.region !== '' || f.comuna !== '' || f.busqueda.trim() !== ''
+
+const claveDeComuna = (comuna: string | null) => (comuna ?? '').trim().toLowerCase()
+
+/* "1180", "#1180" o "118": coincide con el N° del mueble ("1180-1") o del pedido, sin importar mayúsculas. */
+export function coincideBusqueda(o: Pick<OrdenFabricacion, 'numero' | 'pedidoNumero'>, texto: string) {
+  const t = texto.trim().replace(/^#/, '').trim().toLowerCase()
+  return t === '' || o.numero.toLowerCase().includes(t) || o.pedidoNumero.toLowerCase().includes(t)
+}
+
+/* A qué opción del selector de región pertenece un mueble. */
+function regionDe(o: OrdenFabricacion) {
+  const destino = destinoDe(o.comuna)
+  return destino === 'sin_direccion' ? FILTRO_SIN_DIRECCION : destino === 'retiro' ? FILTRO_RETIRO : o.region?.trim() || FILTRO_SIN_REGION
+}
+
+/* Un mueble que espera entrega pasa el filtro si coincide con la región, la comuna y el texto. */
+export function coincideFiltros(o: OrdenFabricacion, f: FiltrosDespachos) {
+  if (!coincideBusqueda(o, f.busqueda)) return false
+  if (f.region !== '' && regionDe(o) !== f.region) return false
+  if (f.comuna !== '' && claveDeComuna(o.comuna) !== f.comuna) return false
+  return true
+}
+
+export interface OpcionDeFiltro {
+  valor: string
+  etiqueta: string
+  total: number
+}
+
+/* Las regiones (y los grupos especiales) que hay entre los muebles que esperan entrega, con cuántos muebles tiene cada
+   una, en el mismo orden de la lista: Metropolitana primero, las demás en orden alfabético, luego lo que no tiene región,
+   "Sin dirección" y "Retiro en tienda". El texto de búsqueda se respeta; la región y la comuna elegidas, no. */
+export function opcionesDeRegion(ordenes: readonly OrdenFabricacion[], busqueda: string): OpcionDeFiltro[] {
+  const cuenta = new Map<string, number>()
+  for (const o of ordenes.filter(esDespachable)) if (coincideBusqueda(o, busqueda)) cuenta.set(regionDe(o), (cuenta.get(regionDe(o)) ?? 0) + 1)
+  const regiones = [...cuenta.keys()].filter((r) => ![FILTRO_SIN_REGION, FILTRO_SIN_DIRECCION, FILTRO_RETIRO].includes(r)).sort((a, b) => compararRegion(a, b))
+  const etiquetas: Record<string, string> = { [FILTRO_SIN_REGION]: 'Región sin informar', [FILTRO_SIN_DIRECCION]: TITULO_SIN_DIRECCION, [FILTRO_RETIRO]: TITULO_RETIRO }
+  return [...regiones, FILTRO_SIN_REGION, FILTRO_SIN_DIRECCION, FILTRO_RETIRO]
+    .filter((v) => cuenta.has(v))
+    .map((v) => ({ valor: v, etiqueta: etiquetas[v] ?? v, total: cuenta.get(v)! }))
+}
+
+/* Las comunas de la región elegida (o todas, si no hay región elegida), con su cantidad de muebles. Los grupos especiales no
+   tienen comunas. */
+export function opcionesDeComuna(ordenes: readonly OrdenFabricacion[], region: string, busqueda: string): OpcionDeFiltro[] {
+  if (region === FILTRO_SIN_DIRECCION || region === FILTRO_RETIRO) return []
+  const comunas = new Map<string, { nombre: string; region: string; total: number }>()
+  for (const o of ordenes.filter(esDespachable)) {
+    if (!coincideBusqueda(o, busqueda) || destinoDe(o.comuna) !== 'ruta') continue
+    if (region !== '' && regionDe(o) !== region) continue
+    const clave = claveDeComuna(o.comuna)
+    const c = comunas.get(clave) ?? { nombre: (o.comuna ?? '').trim(), region: regionDe(o), total: 0 }
+    c.total++
+    comunas.set(clave, c)
+  }
+  return [...comunas.entries()]
+    .sort(([, a], [, b]) => (region === '' ? compararRegion(a.region === FILTRO_SIN_REGION ? null : a.region, b.region === FILTRO_SIN_REGION ? null : b.region) : 0) || a.nombre.localeCompare(b.nombre, 'es'))
+    .map(([clave, c]) => ({ valor: clave, etiqueta: c.nombre, total: c.total }))
+}
+
 /* ---------------- Para paginar: la lista plana y los bloques de cada página ---------------- */
 
 export type Seccion = 'ruta' | 'sin_direccion' | 'retiro'

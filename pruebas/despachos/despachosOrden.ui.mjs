@@ -101,7 +101,7 @@ async function fijarFecha(p, etiquetaCampo, valor) {
   await dormir(200)
 }
 /* La página tal como se ve: encabezados de región y grupos, en el orden de pantalla. */
-const estructura = (p) => p.evaluate(() => [...document.querySelectorAll('main [data-region], main section[aria-label]')].map((e) => e.hasAttribute('data-region')
+const estructura = (p) => p.evaluate(() => [...document.querySelectorAll('main [data-region], main section[aria-label]:not([aria-label="Filtros"])')].map((e) => e.hasAttribute('data-region')
   ? { tipo: 'region', nombre: e.getAttribute('data-region'), texto: e.innerText.replace(/\s+/g, ' ') }
   : { tipo: 'grupo', titulo: e.getAttribute('aria-label'), muebles: [...e.querySelectorAll('[data-mueble]')].map((x) => x.getAttribute('data-mueble')), texto: e.innerText.replace(/\s+/g, ' ') }))
 const rango = (p) => p.evaluate(() => document.querySelector('[data-rango]')?.innerText.replace(/\s+/g, ' ') ?? null)

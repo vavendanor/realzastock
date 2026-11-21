@@ -93,7 +93,7 @@ async function fijarFecha(p, etiquetaCampo, valor) {
   }, etiquetaCampo, valor)
   await dormir(200)
 }
-const titulosGrupos = (p) => p.evaluate(() => [...document.querySelectorAll('main section[aria-label]')].map((s) => s.getAttribute('aria-label')))
+const titulosGrupos = (p) => p.evaluate(() => [...document.querySelectorAll('main section[aria-label]:not([aria-label="Filtros"])')].map((s) => s.getAttribute('aria-label')))
 const mueblesDe = (p, titulo) => p.evaluate((t) => [...(document.querySelector(`main section[aria-label="${t}"]`)?.querySelectorAll('[data-mueble]') ?? [])].map((e) => e.getAttribute('data-mueble')), titulo)
 const todosLosMuebles = (p) => p.evaluate(() => [...document.querySelectorAll('main [data-mueble]')].map((e) => e.getAttribute('data-mueble')))
 const barra = (p) => p.evaluate(() => document.querySelector('[data-barra-despacho]')?.innerText.replace(/\s+/g, ' ') ?? null)

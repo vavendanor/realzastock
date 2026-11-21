@@ -105,6 +105,48 @@ chequeo('el encabezado de región va en el primer bloque de cada región de la p
 chequeo('"Sin dirección" y "Retiro" no llevan encabezado de región', Dp.bloquesDeFilas(lista.slice(10)).every((b) => b.nuevaRegion === false))
 chequeo('los bloques no se pierden muebles: la suma de todas las páginas de 5 es la lista completa', (() => { let n = 0; for (let i = 0; i < lista.length; i += 5) n += Dp.bloquesDeFilas(lista.slice(i, i + 5)).reduce((s, b) => s + b.muebles.length, 0); return n === lista.length })())
 
+sec('Filtros: búsqueda, región y comuna')
+const num = (numero, extra = {}) => dest({ numero, pedido_numero: numero.replace(/-.*/, ''), ...extra })
+const mezcla = [
+  num('1180-1', { comuna: 'Providencia' }),
+  num('1180-2', { comuna: 'Providencia' }),
+  num('1181', { comuna: 'Ñuñoa' }),
+  num('T9301', { comuna: 'Viña del Mar', region: 'Valparaíso' }),
+  num('T9302', { comuna: 'Viña del Mar', region: 'Valparaíso' }),
+  num('T9303', { comuna: 'Quilpué', region: 'Valparaíso' }),
+  num('1190', { comuna: 'Concepción', region: 'Biobío' }),
+  num('1191', { comuna: 'Maipú', region: null }),
+  num('1192', { comuna: 'NO SE PROPORCIONÓ DIRECCIÓN DE ENVÍO' }),
+  num('1193', { comuna: 'RETIRO TIENDA' }),
+  num('1194', { comuna: 'Providencia', cancelado_en: '2026-10-25T00:00:00Z' }), // cancelado: no cuenta
+  num('1195', { comuna: 'Providencia', estado: 'por_fabricar' }), // por fabricar: no cuenta
+]
+chequeo('búsqueda: "1180" encuentra el pedido y sus dos muebles; "#1180" y " 1180 " igual', ['1180', '#1180', ' 1180 '].every((t) => mezcla.filter((o) => Dp.coincideBusqueda(o, t)).map((o) => o.numero).join() === '1180-1,1180-2'))
+chequeo('búsqueda: "118" encuentra todo lo que empieza o contiene "118" (1180-1, 1180-2, 1181); "t93" sin importar mayúsculas', mezcla.filter((o) => Dp.coincideBusqueda(o, '118')).length === 3 && mezcla.filter((o) => Dp.coincideBusqueda(o, 't93')).length === 3)
+chequeo('búsqueda vacía coincide con todo; un texto que no está, con nada', mezcla.every((o) => Dp.coincideBusqueda(o, '')) && !mezcla.some((o) => Dp.coincideBusqueda(o, '99999')))
+const F = (extra) => ({ ...Dp.FILTROS_DESPACHOS_VACIOS, ...extra })
+const pasan = (f) => mezcla.filter(Dp.esDespachable).filter((o) => Dp.coincideFiltros(o, f)).map((o) => o.numero).join()
+chequeo('sin filtros pasan los 10 muebles que esperan entrega', mezcla.filter(Dp.esDespachable).length === 10 && mezcla.filter(Dp.esDespachable).every((o) => Dp.coincideFiltros(o, F({}))) && !Dp.hayFiltrosDespachos(F({})))
+chequeo('región Valparaíso: sus 3 muebles', pasan(F({ region: 'Valparaíso' })) === 'T9301,T9302,T9303')
+chequeo('región + comuna (Valparaíso + Quilpué): 1 mueble; comuna sola (viña del mar): 2', pasan(F({ region: 'Valparaíso', comuna: 'quilpué' })) === 'T9303' && pasan(F({ comuna: 'viña del mar' })) === 'T9301,T9302')
+chequeo('región con comuna que no es de esa región: nada', pasan(F({ region: RM, comuna: 'quilpué' })) === '')
+chequeo('los grupos especiales se filtran solos: Sin dirección (1192), Retiro (1193) y Región sin informar (1191)', pasan(F({ region: Dp.FILTRO_SIN_DIRECCION })) === '1192' && pasan(F({ region: Dp.FILTRO_RETIRO })) === '1193' && pasan(F({ region: Dp.FILTRO_SIN_REGION })) === '1191')
+chequeo('región + búsqueda: Valparaíso y "9302" → T9302', pasan(F({ region: 'Valparaíso', busqueda: '9302' })) === 'T9302')
+chequeo('hayFiltros: cualquier filtro puesto lo activa (un texto de solo espacios, no)', Dp.hayFiltrosDespachos(F({ region: 'Biobío' })) && Dp.hayFiltrosDespachos(F({ comuna: 'x' })) && Dp.hayFiltrosDespachos(F({ busqueda: '1' })) && !Dp.hayFiltrosDespachos(F({ busqueda: '   ' })))
+
+const ops = Dp.opcionesDeRegion(mezcla, '')
+chequeo('el selector de región: Metropolitana (3), Biobío (1), Valparaíso (3), Región sin informar (1), Sin dirección (1), Retiro en tienda (1) y con su conteo', eq(ops.map((o) => [o.etiqueta, o.total]), [[RM, 3], ['Biobío', 1], ['Valparaíso', 3], ['Región sin informar', 1], ['Sin dirección', 1], ['Retiro en tienda', 1]]), JSON.stringify(ops.map((o) => [o.etiqueta, o.total])))
+chequeo('no ofrece regiones sin muebles (el cancelado y el por fabricar no cuentan)', !ops.some((o) => o.total === 0) && ops.reduce((s, o) => s + o.total, 0) === 10)
+chequeo('el texto de búsqueda ajusta los conteos y quita lo que queda en 0 (búsqueda "T93": solo Valparaíso 3)', eq(Dp.opcionesDeRegion(mezcla, 'T93').map((o) => [o.etiqueta, o.total]), [['Valparaíso', 3]]))
+chequeo('comunas de una región: solo las suyas, en orden alfabético y con conteo (Valparaíso: Quilpué 1, Viña del Mar 2)', eq(Dp.opcionesDeComuna(mezcla, 'Valparaíso', '').map((o) => [o.etiqueta, o.total]), [['Quilpué', 1], ['Viña del Mar', 2]]))
+chequeo('comunas de la Metropolitana: Ñuñoa y Providencia (Providencia: 2, sin el cancelado ni el por fabricar)', eq(Dp.opcionesDeComuna(mezcla, RM, '').map((o) => [o.etiqueta, o.total]), [['Ñuñoa', 1], ['Providencia', 2]]))
+chequeo('sin región elegida: todas las comunas, por región (Metropolitana, Biobío, Valparaíso, sin región) y alfabéticas dentro', eq(Dp.opcionesDeComuna(mezcla, '', '').map((o) => o.etiqueta), ['Ñuñoa', 'Providencia', 'Concepción', 'Quilpué', 'Viña del Mar', 'Maipú']), Dp.opcionesDeComuna(mezcla, '', '').map((o) => o.etiqueta).join())
+chequeo('los grupos especiales no tienen comunas', Dp.opcionesDeComuna(mezcla, Dp.FILTRO_SIN_DIRECCION, '').length === 0 && Dp.opcionesDeComuna(mezcla, Dp.FILTRO_RETIRO, '').length === 0)
+chequeo('"Sin dirección" y "Retiro" tampoco cuentan como comunas de "Todas"', !Dp.opcionesDeComuna(mezcla, '', '').some((o) => /dirección|retiro/i.test(o.etiqueta)))
+const filtradas = mezcla.filter((o) => Dp.coincideFiltros(o, F({ region: RM })))
+const gf = Dp.agruparPorDestino(filtradas)
+chequeo('al filtrar, el orden de siempre se mantiene dentro (región → comuna → antigüedad) y los grupos especiales quedan fuera', eq(gf.regiones.map((r) => r.nombre), [RM]) && gf.sinDireccion.length === 0 && gf.retiros.length === 0 && eq(gf.regiones[0].comunas.map((c) => c.nombre), ['Ñuñoa', 'Providencia']))
+
 sec('Por fecha')
 const hoy = '2026-11-17'
 const conFecha = [

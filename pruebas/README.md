@@ -25,7 +25,7 @@ node --import ./pruebas/registrar-ts.mjs pruebas/hojas/hojasLib.test.mjs
   archivo generado releído celda por celda contra `archivos de contexto/Lista Pendiente 31-10-26.xlsx`.
 - `hojasLib.test.mjs`: nombre, validaciones, resumen de pedido y tarjetas de `/hojas`.
 - `despachos/despachos.test.mjs`: destinos (comuna, sin dirección, retiro), orden por región, comuna y antigüedad, bloques de
-  cada página, vista por fecha y despachos parciales.
+  cada página, filtros (región, comuna, búsqueda), vista por fecha y despachos parciales.
 - `paginar.test.mjs`: el paginador (20, 50 y 100 por página, página fuera de rango, lista vacía).
 
 ## Base de datos (PGlite: las migraciones reales en Postgres, sin Supabase)
@@ -47,6 +47,7 @@ node --import ./pruebas/registrar-ts.mjs pruebas/despachos/scriptsSqlOrden.test.
 node pruebas/hojas/hojaDetalle.ui.mjs          # /hojas/:id: lista, plazo, renombrar, agregar, quitar, eliminar, Excel
 node pruebas/despachos/despachos.ui.mjs      # /despachos: grupos, programar, por fecha, quitar, despachar, comprobante
 node pruebas/despachos/despachosOrden.ui.mjs # /despachos: orden por región/comuna/antigüedad, paginador, selección y cambios pendientes entre páginas
+node pruebas/despachos/despachosFiltros.ui.mjs # /despachos: filtros de región, comuna y N° de pedido, grupos especiales, selección "fuera del filtro"
 node pruebas/pedidos/paginador.ui.mjs        # /pedidos y /hojas/nueva: paginador con filtros, cambios pendientes y celular
 node pruebas/hojas/hojas.ui.mjs                # menú, crear hoja, tarjetas, permisos y planilla de pedidos del Dashboard
 node pruebas/hojas/cambiosPendientes.ui.mjs    # guardado diferido de casillas (4b)
