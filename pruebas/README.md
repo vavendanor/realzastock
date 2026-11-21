@@ -24,13 +24,16 @@ node --import ./pruebas/registrar-ts.mjs pruebas/hojas/hojasLib.test.mjs
 - `excelHoja.test.mjs`: reglas de cada celda del Excel, semáforo del plazo (verde, amarillo, rojo) y el
   archivo generado releído celda por celda contra `archivos de contexto/Lista Pendiente 31-10-26.xlsx`.
 - `hojasLib.test.mjs`: nombre, validaciones, resumen de pedido y tarjetas de `/hojas`.
-- `despachos/despachos.test.mjs`: destinos (comuna, sin dirección, retiro), grupos, vista por fecha y despachos parciales.
+- `despachos/despachos.test.mjs`: destinos (comuna, sin dirección, retiro), orden por región, comuna y antigüedad, bloques de
+  cada página, vista por fecha y despachos parciales.
+- `paginar.test.mjs`: el paginador (20, 50 y 100 por página, página fuera de rango, lista vacía).
 
 ## Base de datos (PGlite: las migraciones reales en Postgres, sin Supabase)
 
 ```
 node pruebas/despachos/migracion0018.test.mjs     # funciones de la 0018 por rol, disparador, sincronización
 node pruebas/despachos/scriptsSql0018.test.mjs    # los SQL de supabase/verificacion (pedidos de prueba y verificación por rol)
+node --import ./pruebas/registrar-ts.mjs pruebas/despachos/scriptsSqlOrden.test.mjs   # SQL de pedidos de prueba del orden y paginador, y el orden real de la app sobre ellos
 ```
 
 ## Pantalla real (Chrome)
@@ -43,6 +46,8 @@ node pruebas/despachos/scriptsSql0018.test.mjs    # los SQL de supabase/verifica
 ```
 node pruebas/hojas/hojaDetalle.ui.mjs          # /hojas/:id: lista, plazo, renombrar, agregar, quitar, eliminar, Excel
 node pruebas/despachos/despachos.ui.mjs      # /despachos: grupos, programar, por fecha, quitar, despachar, comprobante
+node pruebas/despachos/despachosOrden.ui.mjs # /despachos: orden por región/comuna/antigüedad, paginador, selección y cambios pendientes entre páginas
+node pruebas/pedidos/paginador.ui.mjs        # /pedidos y /hojas/nueva: paginador con filtros, cambios pendientes y celular
 node pruebas/hojas/hojas.ui.mjs                # menú, crear hoja, tarjetas, permisos y planilla de pedidos del Dashboard
 node pruebas/hojas/cambiosPendientes.ui.mjs    # guardado diferido de casillas (4b)
 node pruebas/hojas/rutas.ui.mjs                # rutas, botón atrás, 404 y login
@@ -51,4 +56,5 @@ node pruebas/hojas/rutas.ui.mjs                # rutas, botón atrás, 404 y log
 4. Al terminar: parar el servidor y `node pruebas/arnes/armar.mjs desarmar` (el banco no se sube a Git).
 
 Los datos de prueba de la base real se borran con `supabase/verificacion/hojas_de_prueba_borrar.sql` (hojas PRUEBA)
-y `supabase/verificacion/despachos_de_prueba_borrar.sql` (pedidos T9201 a T9211).
+`supabase/verificacion/despachos_de_prueba_borrar.sql` (pedidos T9201 a T9211) y
+`supabase/verificacion/despachos_orden_de_prueba_borrar.sql` (pedidos T9300 a T9341).

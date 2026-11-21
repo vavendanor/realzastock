@@ -7,11 +7,14 @@ import { Card } from '../components/ui/Card'
 import { Dialogo } from '../components/ui/Dialogo'
 import { EstadoOrdenBadge } from '../components/ui/EstadoOrdenBadge'
 import { Input } from '../components/ui/Input'
+import { Paginador } from '../components/ui/Paginador'
 import { useCambiosPendientes } from '../hooks/useCambiosPendientes'
 import { hoyEnChile } from '../lib/diasHabiles'
 import {
   agruparPorDestino,
   agruparPorFecha,
+  aplanarDespachos,
+  bloquesDeFilas,
   destinoDe,
   esDespachable,
   etiquetaDeFecha,
@@ -25,6 +28,7 @@ import {
   type PartesDePedido,
 } from '../lib/despachos'
 import { ladoDeLista, medidaDeLista, modeloDeLista, telaDeLista } from '../lib/excelHoja'
+import { paginar, POR_PAGINA_INICIAL } from '../lib/paginar'
 import type { OrdenFabricacion } from '../types'
 
 type Vista = 'por_despachar' | 'por_fecha'
@@ -117,6 +121,24 @@ function FilaMueble({ mueble: o, partes, seleccionable, marcado, alAlternar, mos
   )
 }
 
+/* El encabezado de una región, para que se vea la agrupación: "Metropolitana de Santiago · 12 muebles". */
+function EncabezadoRegion({ nombre, total, continua }: { nombre: string | null; total: number; continua: boolean }) {
+  return (
+    <div
+      role="heading"
+      aria-level={2}
+      data-region={nombre ?? 'sin región'}
+      style={{ display: 'flex', alignItems: 'baseline', gap: 'var(--space-3)', flexWrap: 'wrap', padding: 'var(--space-2) var(--space-1) 0', borderBottom: '2px solid var(--nogal-600)' }}
+    >
+      <span style={{ font: 'var(--type-h3)', color: 'var(--text-strong)' }}>{nombre ? `Región ${nombre}` : 'Región sin informar'}</span>
+      <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>
+        {plural(total, 'mueble', 'muebles')}
+        {continua ? ' · continuación' : ''}
+      </span>
+    </div>
+  )
+}
+
 interface GrupoProps {
   titulo: string
   subtitulo?: string
@@ -129,10 +151,15 @@ interface GrupoProps {
   /* Un gancho para poner algo bajo la lista (los comprobantes). */
   pie?: ReactNode
   etiquetaExtra?: ReactNode
+  /* "Elegir todos" vale para el grupo completo, aunque parte esté en otra página. Si falta, vale para `muebles`. */
+  todosDelGrupo?: OrdenFabricacion[]
+  /* El grupo se corta entre páginas: este bloque es solo una parte. */
+  continua?: boolean
+  sigue?: boolean
 }
 
-function GrupoDeMuebles({ titulo, subtitulo, muebles, partes, elegidos, seleccionable, alAlternar, mostrarDestino, pie, etiquetaExtra }: GrupoProps) {
-  const elegibles = muebles.filter(seleccionable)
+function GrupoDeMuebles({ titulo, subtitulo, muebles, partes, elegidos, seleccionable, alAlternar, mostrarDestino, pie, etiquetaExtra, todosDelGrupo, continua, sigue }: GrupoProps) {
+  const elegibles = (todosDelGrupo ?? muebles).filter(seleccionable)
   const todos = elegibles.length > 0 && elegibles.every((o) => elegidos.has(o.id))
   return (
     <Card
@@ -150,10 +177,16 @@ function GrupoDeMuebles({ titulo, subtitulo, muebles, partes, elegidos, seleccio
             />
           )}
           {titulo}
+          {continua && chip('continuación', 'neutro')}
           {etiquetaExtra}
         </span>
       }
-      subtitle={subtitulo ?? plural(muebles.length, 'mueble', 'muebles')}
+      subtitle={
+        subtitulo ??
+        (continua || sigue
+          ? `${muebles.length} de ${todosDelGrupo?.length ?? muebles.length} muebles${sigue ? ' · sigue en la página siguiente' : ''}`
+          : plural(muebles.length, 'mueble', 'muebles'))
+      }
     >
       {muebles.map((o) => (
         <FilaMueble
@@ -185,6 +218,8 @@ export function Despachos() {
   const [error, setError] = useState<string | null>(null)
   const [vista, setVista] = useState<Vista>('por_despachar')
   const [elegidosIds, setElegidos] = useState<ReadonlySet<string>>(() => new Set())
+  const [pagina, setPagina] = useState(1)
+  const [porPagina, setPorPagina] = useState<number>(POR_PAGINA_INICIAL)
   const [fecha, setFecha] = useState(() => manana(hoy))
   const [trabajando, setTrabajando] = useState(false)
   const [confirmando, setConfirmando] = useState(false)
@@ -217,6 +252,17 @@ export function Despachos() {
 
   const porDestino = useMemo(() => agruparPorDestino(ordenes), [ordenes])
   const porFecha = useMemo(() => agruparPorFecha(ordenes), [ordenes])
+  /* La lista de "Por despachar" se pagina por MUEBLES, en el orden de pantalla. Cuando un grupo (una comuna) queda cortado
+     entre dos páginas, la segunda repite su encabezado con la etiqueta "continuación". */
+  const filas = useMemo(() => aplanarDespachos(porDestino), [porDestino])
+  const pag = paginar(filas, pagina, porPagina)
+  const bloques = bloquesDeFilas(pag.items)
+  const mueblesDeGrupo = useMemo(() => {
+    const m = new Map<string, OrdenFabricacion[]>()
+    for (const f of filas) m.set(f.claveGrupo, [...(m.get(f.claveGrupo) ?? []), f.mueble])
+    return m
+  }, [filas])
+  const totalDeRegion = (nombre: string | null) => porDestino.regiones.find((r) => r.nombre === nombre)?.total ?? 0
   const totalPorDespachar = ordenes.filter(esDespachable).length
   const totalProgramados = porFecha.reduce((s, g) => s + g.porSalir.length, 0)
 
@@ -332,14 +378,33 @@ export function Despachos() {
               <span style={{ font: 'var(--type-body)', color: 'var(--text-muted)' }}>No hay muebles fabricados esperando entrega.</span>
             </Card>
           )}
-          {porDestino.rutas.map((g) => (
-            <GrupoDeMuebles key={g.clave} titulo={g.nombre} muebles={g.muebles} partes={partes} elegidos={idsSet} seleccionable={seleccionable} alAlternar={alternar} />
+          {bloques.map((b, i) => (
+            <div key={`${b.claveGrupo}|${i}`} style={{ display: 'contents' }}>
+              {b.nuevaRegion && <EncabezadoRegion nombre={b.region} total={totalDeRegion(b.region)} continua={b.continua} />}
+              <GrupoDeMuebles
+                titulo={b.titulo}
+                subtitulo={
+                  b.seccion === 'sin_direccion' && !b.continua && !b.sigue
+                    ? `${plural(b.muebles.length, 'mueble', 'muebles')} · falta la dirección de entrega`
+                    : b.seccion === 'retiro' && !b.continua && !b.sigue
+                      ? `${plural(b.muebles.length, 'mueble', 'muebles')} · fuera de las rutas`
+                      : undefined
+                }
+                muebles={b.muebles}
+                todosDelGrupo={mueblesDeGrupo.get(b.claveGrupo)}
+                continua={b.continua}
+                sigue={b.sigue}
+                partes={partes}
+                elegidos={idsSet}
+                seleccionable={seleccionable}
+                alAlternar={alternar}
+              />
+            </div>
           ))}
-          {porDestino.sinDireccion.length > 0 && (
-            <GrupoDeMuebles titulo="Sin dirección" subtitulo={`${plural(porDestino.sinDireccion.length, 'mueble', 'muebles')} · falta la dirección de entrega`} muebles={porDestino.sinDireccion} partes={partes} elegidos={idsSet} seleccionable={seleccionable} alAlternar={alternar} />
-          )}
-          {porDestino.retiros.length > 0 && (
-            <GrupoDeMuebles titulo="Retiro en tienda" subtitulo={`${plural(porDestino.retiros.length, 'mueble', 'muebles')} · fuera de las rutas`} muebles={porDestino.retiros} partes={partes} elegidos={idsSet} seleccionable={seleccionable} alAlternar={alternar} />
+          {pag.total > 0 && (
+            <Card padding="0">
+              <Paginador pagina={pag} porPagina={porPagina} unidad="muebles" alCambiarPagina={setPagina} alCambiarPorPagina={(n) => { setPorPagina(n); setPagina(1) }} />
+            </Card>
           )}
         </>
       )}

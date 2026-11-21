@@ -104,6 +104,15 @@ async function datos(p) {
   })
 }
 
+/* La tabla se pagina de a 20 (el paginador se prueba aparte): para tener los pedidos a la vista, deja por fabricar solo
+   unos pocos (el resto pasa a entregado) y recarga. Devuelve los datos de prueba ya recalculados. */
+async function dejarPocos(p) {
+  const d0 = await datos(p)
+  await srv(p, (conservar) => { const s = window.__srv; for (const n of s.numeros('por_fabricar')) if (!conservar.includes(s.fila(n).pedido_numero)) s.otro(n, { estado: 'entregado' }) }, [d0.doble, ...d0.simples, d0.fabricado])
+  await p.reload({ waitUntil: 'networkidle0' }); await dormir(700)
+  return datos(p)
+}
+
 /* ================= 1. Menú de escritorio ================= */
 await seccion('1. Menú de escritorio: "Pedidos" es un desplegable')
 {
@@ -203,11 +212,11 @@ for (const [nombre, ancho] of [['escritorio', 1366], ['celular', 390]]) {
 await seccion('4. /hojas/nueva: elegir pedidos, agregar por N° y crear')
 {
   const p = await abrir('administrador', '/hojas/nueva')
-  const d = await datos(p)
+  const d = await dejarPocos(p)
   chequeo('el servidor de prueba tiene un pedido de 2 muebles y otros simples', !!d.doble && d.simples.length >= 3 && !!d.fabricado, JSON.stringify(d))
   const t0 = await texto(p)
   chequeo('el título es "Nueva hoja de fabricación" y existe el panel "Hoja en preparación"', /Nueva hoja de fabricación/.test(t0) && /Hoja en preparación/.test(t0))
-  chequeo('la tabla parte filtrada en "Por fabricar" (solo hay pedidos por fabricar)', (await p.evaluate(() => [...document.querySelectorAll('select')].some((s) => s.selectedOptions[0]?.textContent.trim() === 'Por fabricar'))) && (await filasTabla(p)) === await srv(p, () => window.__srv.numeros('por_fabricar').length), `${await filasTabla(p)}`)
+  chequeo('la tabla parte filtrada en "Por fabricar" (solo hay pedidos por fabricar)', (await p.evaluate(() => [...document.querySelectorAll('select')].some((s) => s.selectedOptions[0]?.textContent.trim() === 'Por fabricar'))) && (await filasTabla(p)) === Math.min(20, await srv(p, () => window.__srv.numeros('por_fabricar').length)), `${await filasTabla(p)}`)
   chequeo('"Limpiar filtros" no se ofrece activo (por fabricar es el punto de partida)', (await deshabilitado(p, 'Limpiar filtros')) === true)
   chequeo('el nombre sugerido es "Hoja dd-mm-aaaa" con la fecha de hoy', await p.evaluate((n) => [...document.querySelectorAll('input')].some((i) => i.value === n), `Hoja ${hoyCorto()}`), hoyCorto())
   chequeo('con 0 pedidos, "Crear hoja" está deshabilitado', (await deshabilitado(p, 'Crear hoja')) === true)
@@ -226,8 +235,8 @@ await seccion('4. /hojas/nueva: elegir pedidos, agregar por N° y crear')
   await (await casillaPedido(p, d.simples[0])).click(); await dormir(300)
   chequeo('desmarcar su casilla lo quita del panel', !(await itemsPanel(p)).includes(d.simples[0]))
   // Casilla del encabezado y filtros
-  await (await porEtiqueta(p, 'Elegir todos los pedidos visibles para la hoja de fabricación')).click(); await dormir(400)
-  chequeo('la casilla del encabezado elige todos los pedidos visibles', (await itemsPanel(p)).length === d.porFabricar, `${(await itemsPanel(p)).length} de ${d.porFabricar}`)
+  await (await porEtiqueta(p, 'Elegir todos los pedidos de esta página para la hoja de fabricación')).click(); await dormir(400)
+  chequeo('la casilla del encabezado elige todos los pedidos de la página (con 100 por página, todos)', (await itemsPanel(p)).length === d.porFabricar, `${(await itemsPanel(p)).length} de ${d.porFabricar}`)
   await captura(p, '4-nueva-todos')
   await clicTexto(p, 'button', 'Quitar selección')
   chequeo('"Quitar selección" vacía la hoja', (await itemsPanel(p)).length === 0 && (await deshabilitado(p, 'Crear hoja')) === true)
@@ -307,8 +316,7 @@ await seccion('4. /hojas/nueva: elegir pedidos, agregar por N° y crear')
 await seccion('5. Los cambios pendientes (4b) siguen intactos en las hojas')
 {
   const p = await abrir('administrador', '/hojas/nueva')
-  const n = await srv(p, () => window.__srv.numeros('por_fabricar')[0])
-  const h = await p.evaluateHandle((n) => [...document.querySelectorAll('input[type=checkbox]')].find((i) => (i.getAttribute('aria-label') ?? '') === `B del pedido ${n}`) ?? null, n)
+  const h = await p.evaluateHandle(() => [...document.querySelectorAll('input[type=checkbox]')].find((i) => (i.getAttribute('aria-label') ?? '').startsWith('B del pedido ')) ?? null)
   await h.asElement().click(); await dormir(300)
   const barra = await p.evaluate(() => document.querySelector('[data-contador]')?.textContent?.trim() ?? null)
   chequeo('marcar una casilla en /hojas/nueva muestra la barra Guardar/Descartar', barra === '1 cambio sin guardar en 1 mueble', barra)
@@ -325,7 +333,7 @@ await seccion('6. /hojas: tarjetas con avance y retraso')
 {
   const p = await abrir('administrador', '/hojas')
   chequeo('sin hojas: estado vacío con invitación a crear', /Aún no hay hojas de fabricación/.test(await texto(p)))
-  const d = await datos(p)
+  const d = await dejarPocos(p)
   // Hoja con 2 pedidos de octubre (por fabricar, vencidos) -> la creamos desde la pantalla
   await clicTexto(p, 'button', 'Crear hoja de fabricación')
   for (const ped of [d.doble, d.simples[0]]) await (await casillaPedido(p, ped)).click()

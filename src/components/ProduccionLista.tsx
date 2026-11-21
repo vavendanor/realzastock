@@ -24,6 +24,7 @@ import {
   type OpcionesFiltro,
 } from '../lib/ordenes'
 import { faltaColorTela, mencionaPatas, preparadoPorShopify, shopifyDesmarco } from '../lib/avisosOrden'
+import { paginar, POR_PAGINA_INICIAL } from '../lib/paginar'
 import type { Etapa, OrdenFabricacion } from '../types'
 import { CasillaEtapa } from './CasillaEtapa'
 import { Button } from './ui/Button'
@@ -32,6 +33,7 @@ import { Checkbox } from './ui/Checkbox'
 import { DataTable, type Column } from './ui/DataTable'
 import { EstadoOrdenBadge } from './ui/EstadoOrdenBadge'
 import { Input } from './ui/Input'
+import { Paginador } from './ui/Paginador'
 import { Select } from './ui/Select'
 
 /* Para usar la tabla como selector de pedidos (crear una hoja de fabricación). Se elige por
@@ -131,14 +133,23 @@ export function ProduccionLista({ recargaToken, seleccion }: Props) {
   const [totalSistema, setTotalSistema] = useState<number | null>(null)
   const [opciones, setOpciones] = useState<OpcionesFiltro>({ comunas: [], modelos: [], telas: [] })
   const [filtrosAbiertos, setFiltrosAbiertos] = useState(false)
+  const [pagina, setPagina] = useState(1)
+  const [porPagina, setPorPagina] = useState<number>(POR_PAGINA_INICIAL)
   /* Para ignorar respuestas viejas si el usuario cambia filtros rápido. */
   const peticion = useRef(0)
 
   const fechasInvertidas = Boolean(filtros.desde && filtros.hasta && filtros.desde > filtros.hasta)
-  const cambiarFiltros = (parcial: Partial<FiltrosOrdenes>) => setFiltros((f) => ({ ...f, ...parcial }))
+  /* Al cambiar un filtro se vuelve a la página 1: la lista nueva puede ser más corta que la página en que se estaba. */
+  const cambiarFiltros = (parcial: Partial<FiltrosOrdenes>) => {
+    setPagina(1)
+    setFiltros((f) => ({ ...f, ...parcial }))
+  }
   /* Al elegir pedidos, "por fabricar" es el punto de partida y no cuenta como filtro puesto. */
   const nFiltros = filtrosActivos(filtros) - (eligiendo && filtros.estado === 'por_fabricar' ? 1 : 0)
-  const limpiarFiltros = () => setFiltros({ ...filtrosBase(eligiendo), incluirAdicionales: filtros.incluirAdicionales })
+  const limpiarFiltros = () => {
+    setPagina(1)
+    setFiltros({ ...filtrosBase(eligiendo), incluirAdicionales: filtros.incluirAdicionales })
+  }
 
   const cargarLista = useCallback(async () => {
     const numero = ++peticion.current
@@ -213,7 +224,14 @@ export function ProduccionLista({ recargaToken, seleccion }: Props) {
   const abrir = (o: OrdenFabricacion) => (seleccion ? seleccion.alternar(o.pedidoNumero) : navigate(`/pedidos/${o.id}`))
 
   /* ---------------- Selección de pedidos (solo al elegir para una hoja) ---------------- */
-  const pedidosVisibles = [...new Set(ordenes.map((o) => o.pedidoNumero))]
+  /* El paginador corta lo que ya pasó los filtros. Los cambios pendientes y lo elegido no dependen de la página. */
+  const pag = paginar(ordenes, pagina, porPagina)
+  const visibles = pag.items
+  const paginador = (
+    <Paginador pagina={pag} porPagina={porPagina} unidad={pag.total === 1 ? 'orden' : 'órdenes'} alCambiarPagina={setPagina} alCambiarPorPagina={(n) => { setPorPagina(n); setPagina(1) }} />
+  )
+  /* "Elegir todos" vale para los pedidos de la página que se está viendo. */
+  const pedidosVisibles = [...new Set(visibles.map((o) => o.pedidoNumero))]
   const nVisiblesElegidos = seleccion ? pedidosVisibles.filter((p) => seleccion.elegidos.has(p)).length : 0
   const todosVisibles = pedidosVisibles.length > 0 && nVisiblesElegidos === pedidosVisibles.length
   const algunosVisibles = nVisiblesElegidos > 0 && !todosVisibles
@@ -431,7 +449,7 @@ export function ProduccionLista({ recargaToken, seleccion }: Props) {
         ref={(el) => {
           if (el) el.indeterminate = algunosVisibles
         }}
-        aria-label="Elegir todos los pedidos visibles para la hoja de fabricación"
+        aria-label="Elegir todos los pedidos de esta página para la hoja de fabricación"
         onChange={alternarTodos}
         disabled={ordenes.length === 0}
         style={{ width: 18, height: 18, accentColor: 'var(--action-accent)', cursor: 'pointer', margin: 0, verticalAlign: 'middle' }}
@@ -612,7 +630,10 @@ export function ProduccionLista({ recargaToken, seleccion }: Props) {
           {!cargando && ordenes.length === 0 ? (
             sinResultados
           ) : (
-            <DataTable compacta rows={ordenes} columns={columnas} onRowClick={abrir} emptyLabel="Cargando órdenes..." />
+            <>
+              <DataTable compacta rows={visibles} columns={columnas} onRowClick={abrir} emptyLabel="Cargando órdenes..." />
+              {paginador}
+            </>
           )}
         </Card>
       ) : (
@@ -625,7 +646,7 @@ export function ProduccionLista({ recargaToken, seleccion }: Props) {
           {!cargando && ordenes.length === 0 && <Card>{sinResultados}</Card>}
           {seleccion && ordenes.length > 0 && (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-3)', padding: '0 var(--space-2)' }}>
-              <Checkbox label="Elegir todos los visibles" checked={todosVisibles} onChange={alternarTodos} />
+              <Checkbox label="Elegir todos los de esta página" checked={todosVisibles} onChange={alternarTodos} />
               {seleccion.elegidos.size > 0 && (
                 <Button size="sm" variant="ghost" onClick={quitarTodos}>
                   Quitar ({seleccion.elegidos.size})
@@ -633,7 +654,7 @@ export function ProduccionLista({ recargaToken, seleccion }: Props) {
               )}
             </div>
           )}
-          {ordenes.map((o) => (
+          {visibles.map((o) => (
             <Card key={o.id} padding="var(--space-4)">
               <div onClick={() => abrir(o)} style={{ cursor: 'pointer' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 'var(--space-3)' }}>
@@ -691,6 +712,7 @@ export function ProduccionLista({ recargaToken, seleccion }: Props) {
               </div>
             </Card>
           ))}
+          {ordenes.length > 0 && <Card padding="0">{paginador}</Card>}
         </div>
       )}
     </>

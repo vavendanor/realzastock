@@ -107,7 +107,8 @@ async function preparar(p) {
   await srv(p, (cfg) => {
     const s = window.__srv
     for (const e of ['fabricado', 'en_despacho']) for (const n of s.numeros(e)) s.otro(n, { estado: 'entregado' })
-    const fab = (n, campos) => s.otro(n, { estado: 'fabricado', listo: true, ...campos })
+    const RM = 'Metropolitana de Santiago' // la región va con la comuna (el orden de Despachos agrupa primero por región)
+    const fab = (n, campos) => s.otro(n, { estado: 'fabricado', listo: true, region: RM, ...campos })
     fab(cfg.f1, { comuna: 'Providencia' })
     fab(cfg.f2, { comuna: 'Providencia' })
     fab(cfg.f3, { comuna: 'Ñuñoa' })
@@ -116,7 +117,7 @@ async function preparar(p) {
     fab(cfg.f6, { comuna: 'NO SE PROPORCIONÓ DIRECCIÓN DE ENVÍO' })
     fab(cfg.f7, { comuna: 'Maipú', cancelado_en: new Date().toISOString() })
     fab(cfg.f8, { comuna: 'Maipú', despacho_programado: cfg.manana })
-    s.otro(cfg.f9, { estado: 'en_despacho', listo: true, comuna: 'Vitacura', despacho_programado: cfg.hoy, despachado_en: new Date().toISOString() })
+    s.otro(cfg.f9, { estado: 'en_despacho', listo: true, region: RM, comuna: 'Vitacura', despacho_programado: cfg.hoy, despachado_en: new Date().toISOString() })
     fab(cfg.d1, { comuna: 'Providencia' }) // el otro mueble de ese pedido sigue por fabricar
   }, { f1: num(S1), f2: num(S2), f3: num(S3), f4: num(S4), f5: num(S5), f6: num(S6), f7: num(S7), f8: num(S8), f9: num(S9), d1: D1, hoy: HOY, manana: MANANA })
   await clicTexto(p, 'button', 'Recargar')
@@ -276,7 +277,10 @@ await seccion('5. Los cambios pendientes del 4b siguen intactos')
   const p = await abrir('administrador', '/despachos')
   await preparar(p)
   await p.goto(`${BASE}/pedidos`, { waitUntil: 'networkidle0' }); await dormir(800)
-  const c = await p.evaluateHandle((n) => [...document.querySelectorAll('input[type=checkbox]')].find((i) => (i.getAttribute('aria-label') ?? '') === `B del pedido ${n}`) ?? null, num(S3))
+  /* La lista de Pedidos está paginada (20 por página): se recorre hasta dar con el mueble. */
+  const buscar = () => p.evaluateHandle((n) => [...document.querySelectorAll('input[type=checkbox]')].find((i) => (i.getAttribute('aria-label') ?? '') === `B del pedido ${n}`) ?? null, num(S3))
+  let c = await buscar()
+  for (let i = 0; i < 10 && !c.asElement(); i++) { if (!(await clicTexto(p, 'button', 'Siguiente'))) break; c = await buscar() }
   await c.asElement().click(); await dormir(300)
   const contador = () => p.evaluate(() => document.querySelector('[data-contador]')?.textContent?.trim() ?? null)
   chequeo('marcar una casilla en Pedidos deja el cambio pendiente', (await contador()) === '1 cambio sin guardar en 1 mueble', await contador())

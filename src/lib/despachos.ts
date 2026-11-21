@@ -1,4 +1,5 @@
 import type { OrdenFabricacion } from '../types'
+import { inicioDelPlazo } from './diasHabiles'
 import { compararPedido, direccionDeLista, esPiezaDeHoja } from './excelHoja'
 import { traerTodo } from './hojas'
 import { aplanarOrden, COLUMNAS_ORDEN, type OrdenRaw } from './ordenes'
@@ -38,17 +39,48 @@ export interface GrupoComuna {
   muebles: OrdenFabricacion[]
 }
 
+export interface GrupoRegion {
+  /* Nombre de la región; null si el mueble tiene comuna pero no se sabe su región. */
+  nombre: string | null
+  comunas: GrupoComuna[]
+  /* Muebles de toda la región. */
+  total: number
+}
+
 export interface GruposDeDestino {
-  /* Las rutas: una por comuna, en orden alfabético. */
-  rutas: GrupoComuna[]
+  /* Las rutas: primero la región Metropolitana, después las demás en orden alfabético y, al final, lo que no tiene
+     región. Dentro de cada región, las comunas en orden alfabético. */
+  regiones: GrupoRegion[]
   sinDireccion: OrdenFabricacion[]
   /* Retiros en tienda: fuera de las rutas. */
   retiros: OrdenFabricacion[]
 }
 
-/* Agrupa los muebles que esperan entrega. Los que no son despachables se ignoran. */
+export const REGION_METROPOLITANA = 'Metropolitana de Santiago'
+
+/* Desde cuándo corre el pedido: la fecha del pedido, o la del inicio del plazo si se cambió a mano. */
+const antiguedadDe = (o: OrdenFabricacion) => inicioDelPlazo(o)
+
+/* El más antiguo primero (por fecha del pedido o inicio del plazo); a igual fecha, por pedido y unidad. */
+export const compararAntiguedad = (a: OrdenFabricacion, b: OrdenFabricacion) => {
+  const x = antiguedadDe(a)
+  const y = antiguedadDe(b)
+  return x === y ? compararMueble(a, b) : x < y ? -1 : 1
+}
+
+const compararRegion = (a: string | null, b: string | null) => {
+  if (a === b) return 0
+  if (a === null) return 1
+  if (b === null) return -1
+  if (a === REGION_METROPOLITANA) return -1
+  if (b === REGION_METROPOLITANA) return 1
+  return a.localeCompare(b, 'es')
+}
+
+/* Agrupa los muebles que esperan entrega: región, comuna y, dentro de la comuna, del pedido más antiguo al más nuevo.
+   Sin dirección y retiros van aparte. Los que no son despachables se ignoran. */
 export function agruparPorDestino(ordenes: readonly OrdenFabricacion[]): GruposDeDestino {
-  const rutas = new Map<string, GrupoComuna>()
+  const regiones = new Map<string, { nombre: string | null; comunas: Map<string, GrupoComuna> }>()
   const sinDireccion: OrdenFabricacion[] = []
   const retiros: OrdenFabricacion[] = []
   for (const o of ordenes.filter(esDespachable)) {
@@ -56,17 +88,97 @@ export function agruparPorDestino(ordenes: readonly OrdenFabricacion[]): GruposD
     if (destino === 'sin_direccion') sinDireccion.push(o)
     else if (destino === 'retiro') retiros.push(o)
     else {
+      const nombreRegion = o.region?.trim() || null
+      const region = regiones.get(nombreRegion ?? '') ?? { nombre: nombreRegion, comunas: new Map<string, GrupoComuna>() }
       const clave = (o.comuna ?? '').trim().toLowerCase()
-      const grupo = rutas.get(clave) ?? { clave, nombre: (o.comuna ?? '').trim(), muebles: [] }
-      grupo.muebles.push(o)
-      rutas.set(clave, grupo)
+      const comuna = region.comunas.get(clave) ?? { clave, nombre: (o.comuna ?? '').trim(), muebles: [] }
+      comuna.muebles.push(o)
+      region.comunas.set(clave, comuna)
+      regiones.set(nombreRegion ?? '', region)
     }
   }
   return {
-    rutas: [...rutas.values()].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')).map((g) => ({ ...g, muebles: g.muebles.sort(compararMueble) })),
+    regiones: [...regiones.values()]
+      .sort((a, b) => compararRegion(a.nombre, b.nombre))
+      .map((r) => {
+        const comunas = [...r.comunas.values()]
+          .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
+          .map((c) => ({ ...c, muebles: c.muebles.sort(compararAntiguedad) }))
+        return { nombre: r.nombre, comunas, total: comunas.reduce((s, c) => s + c.muebles.length, 0) }
+      }),
     sinDireccion: sinDireccion.sort(compararMueble),
     retiros: retiros.sort(compararMueble),
   }
+}
+
+/* ---------------- Para paginar: la lista plana y los bloques de cada página ---------------- */
+
+export type Seccion = 'ruta' | 'sin_direccion' | 'retiro'
+
+/* Un mueble en el orden en que se muestra, sabiendo a qué grupo (comuna, sin dirección o retiro) pertenece. */
+export interface FilaDeLista {
+  mueble: OrdenFabricacion
+  seccion: Seccion
+  region: string | null
+  /* Título del grupo: la comuna, "Sin dirección" o "Retiro en tienda". */
+  titulo: string
+  claveGrupo: string
+  /* Posición dentro de su grupo (desde 0) y tamaño del grupo completo, esté en la página que esté. */
+  indice: number
+  totalGrupo: number
+}
+
+export const TITULO_SIN_DIRECCION = 'Sin dirección'
+export const TITULO_RETIRO = 'Retiro en tienda'
+
+/* Todos los muebles en el orden de pantalla: regiones y comunas, luego "Sin dirección" y al final los retiros. */
+export function aplanarDespachos(g: GruposDeDestino): FilaDeLista[] {
+  const filas: FilaDeLista[] = []
+  const agregar = (muebles: readonly OrdenFabricacion[], seccion: Seccion, region: string | null, titulo: string, claveGrupo: string) =>
+    muebles.forEach((mueble, indice) => filas.push({ mueble, seccion, region, titulo, claveGrupo, indice, totalGrupo: muebles.length }))
+  for (const r of g.regiones) for (const c of r.comunas) agregar(c.muebles, 'ruta', r.nombre, c.nombre, `ruta|${r.nombre ?? ''}|${c.clave}`)
+  agregar(g.sinDireccion, 'sin_direccion', null, TITULO_SIN_DIRECCION, 'sin_direccion')
+  agregar(g.retiros, 'retiro', null, TITULO_RETIRO, 'retiro')
+  return filas
+}
+
+/* Lo que se dibuja en una página: los muebles seguidos de un mismo grupo forman un bloque. Si el grupo empezó en la
+   página anterior, el bloque lo dice (`continua`) para repetir su encabezado; si sigue en la siguiente, también
+   (`sigue`). `nuevaRegion` marca el primer bloque de cada región en la página, para poner su encabezado. */
+export interface BloqueDePagina {
+  claveGrupo: string
+  seccion: Seccion
+  region: string | null
+  titulo: string
+  muebles: OrdenFabricacion[]
+  totalGrupo: number
+  continua: boolean
+  sigue: boolean
+  nuevaRegion: boolean
+}
+
+export function bloquesDeFilas(filas: readonly FilaDeLista[]): BloqueDePagina[] {
+  const bloques: BloqueDePagina[] = []
+  for (const f of filas) {
+    const ultimo = bloques[bloques.length - 1]
+    if (ultimo && ultimo.claveGrupo === f.claveGrupo) {
+      ultimo.muebles.push(f.mueble)
+      ultimo.sigue = f.indice < f.totalGrupo - 1
+      continue
+    }
+    bloques.push({
+      claveGrupo: f.claveGrupo,
+      seccion: f.seccion,
+      region: f.region,
+      titulo: f.titulo,
+      muebles: [f.mueble],
+      totalGrupo: f.totalGrupo,
+      continua: f.indice > 0,
+      sigue: f.indice < f.totalGrupo - 1,
+      nuevaRegion: f.seccion === 'ruta' && (!ultimo || ultimo.seccion !== 'ruta' || ultimo.region !== f.region),
+    })
+  }
+  return bloques
 }
 
 export interface GrupoFecha {

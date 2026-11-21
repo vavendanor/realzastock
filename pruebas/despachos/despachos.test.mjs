@@ -43,12 +43,67 @@ const muebles = [
   orden({ numero: '1218', pedido_numero: '1218', comuna: 'Maipú', tipo: null, es_adicional: true }), // patas
 ]
 const g = Dp.agruparPorDestino(muebles)
-chequeo('rutas por comuna en orden alfabético del español (la Ñ va entre la N y la O): Las Condes, Ñuñoa, Providencia', eq(g.rutas.map((x) => x.nombre), ['Las Condes', 'Ñuñoa', 'Providencia']), g.rutas.map((x) => x.nombre).join())
-chequeo('dentro de una comuna: por pedido y unidad (1200-1, 1200-2, 1204)', eq(g.rutas.find((x) => x.nombre === 'Providencia').muebles.map((o) => o.numero), ['1200-1', '1200-2', '1204']))
+chequeo('rutas por comuna en orden alfabético del español (la Ñ va entre la N y la O): Las Condes, Ñuñoa, Providencia', eq(g.regiones[0].comunas.map((x) => x.nombre), ['Las Condes', 'Ñuñoa', 'Providencia']), g.regiones[0].comunas.map((x) => x.nombre).join())
+chequeo('dentro de una comuna: por pedido y unidad (1200-1, 1200-2, 1204)', eq(g.regiones[0].comunas.find((x) => x.nombre === 'Providencia').muebles.map((o) => o.numero), ['1200-1', '1200-2', '1204']))
 chequeo('"Sin dirección" junta los sin comuna y los "NO SE PROPORCIONÓ..." (1213, 1214)', eq(g.sinDireccion.map((o) => o.numero), ['1213', '1214']))
-chequeo('los retiros van aparte y no salen en ninguna ruta (1212)', eq(g.retiros.map((o) => o.numero), ['1212']) && !g.rutas.some((r) => r.muebles.some((o) => o.numero === '1212')))
-chequeo('no aparecen los cancelados, los por fabricar, los que ya salieron ni las patas', ![...g.rutas.flatMap((r) => r.muebles), ...g.sinDireccion, ...g.retiros].some((o) => ['1215', '1216', '1217', '1218'].includes(o.numero)))
-chequeo('la misma comuna escrita distinto va en un solo grupo', Dp.agruparPorDestino([orden({ comuna: 'Las Condes' }), orden({ comuna: 'las condes ' })]).rutas.length === 1)
+chequeo('los retiros van aparte y no salen en ninguna ruta (1212)', eq(g.retiros.map((o) => o.numero), ['1212']) && !g.regiones.some((r) => r.comunas.some((c) => c.muebles.some((o) => o.numero === '1212'))))
+chequeo('no aparecen los cancelados, los por fabricar, los que ya salieron ni las patas', ![...g.regiones.flatMap((r) => r.comunas.flatMap((c) => c.muebles)), ...g.sinDireccion, ...g.retiros].some((o) => ['1215', '1216', '1217', '1218'].includes(o.numero)))
+chequeo('la misma comuna escrita distinto va en un solo grupo', Dp.agruparPorDestino([orden({ comuna: 'Las Condes' }), orden({ comuna: 'las condes ' })]).regiones[0].comunas.length === 1)
+
+sec('Orden: región, comuna y antigüedad')
+const RM = 'Metropolitana de Santiago'
+const dest = (extra) => orden({ comuna: 'Providencia', region: RM, ...extra })
+const surtido = [
+  dest({ numero: '2001', pedido_numero: '2001', comuna: 'Viña del Mar', region: 'Valparaíso' }),
+  dest({ numero: '2002', pedido_numero: '2002', comuna: 'Concepción', region: 'Biobío' }),
+  dest({ numero: '2003', pedido_numero: '2003', comuna: 'Antofagasta', region: 'Antofagasta' }),
+  dest({ numero: '2004', pedido_numero: '2004', comuna: 'Ñuñoa' }),
+  dest({ numero: '2005', pedido_numero: '2005', comuna: 'Las Condes' }),
+  dest({ numero: '2006', pedido_numero: '2006', comuna: 'Quilpué', region: 'Valparaíso' }),
+  dest({ numero: '2007', pedido_numero: '2007', comuna: 'Puerto Montt', region: 'Los Lagos' }),
+  dest({ numero: '2008', pedido_numero: '2008', comuna: 'Maipú', region: null }), // comuna sin región conocida
+]
+const gr = Dp.agruparPorDestino(surtido)
+chequeo('primero la región Metropolitana y después las demás en orden alfabético; al final la que no tiene región', eq(gr.regiones.map((r) => r.nombre), [RM, 'Antofagasta', 'Biobío', 'Los Lagos', 'Valparaíso', null]), gr.regiones.map((r) => r.nombre).join())
+chequeo('dentro de cada región, las comunas en orden alfabético (Valparaíso: Quilpué antes que Viña del Mar)', eq(gr.regiones.find((r) => r.nombre === RM).comunas.map((c) => c.nombre), ['Las Condes', 'Ñuñoa']) && eq(gr.regiones.find((r) => r.nombre === 'Valparaíso').comunas.map((c) => c.nombre), ['Quilpué', 'Viña del Mar']))
+chequeo('cada región cuenta sus muebles (RM: 2, Valparaíso: 2)', gr.regiones.find((r) => r.nombre === RM).total === 2 && gr.regiones.find((r) => r.nombre === 'Valparaíso').total === 2)
+chequeo('una región escrita con espacios cuenta como la misma', Dp.agruparPorDestino([dest({ region: RM }), dest({ region: ' ' + RM + ' ' })]).regiones.length === 1)
+
+/* Antigüedad: el más antiguo primero, por fecha del pedido o por el inicio del plazo si se cambió a mano. */
+const edad = (numero, fecha, extra = {}) => dest({ numero, pedido_numero: numero, fecha_pedido: fecha, ...extra })
+const viejos = [
+  edad('3005', '2026-10-25'),
+  edad('3001', '2026-10-30'),
+  edad('3003', '2026-10-10', { plazo_desde: '2026-11-05' }), // pedido antiguo, pero el plazo se contó desde el 5-nov: es el más nuevo
+  edad('3002', '2026-10-01'),
+  edad('3004', '2026-10-25'), // misma fecha que 3005: por número de pedido
+  edad('3006', '2026-11-02', { plazo_desde: '2026-11-03' }),
+]
+const ordenado = Dp.agruparPorDestino(viejos).regiones[0].comunas[0].muebles.map((o) => o.numero)
+chequeo('dentro de una comuna: el pedido más antiguo primero (fecha del pedido o inicio del plazo cambiado a mano; empate por número)', eq(ordenado, ['3002', '3004', '3005', '3001', '3006', '3003']), ordenado.join())
+chequeo('la fecha de inicio del plazo reemplaza a la del pedido (3003: pedido del 10-oct, plazo desde el 5-nov, queda al final)', ordenado.at(-1) === '3003')
+chequeo('el comparador deja primero al más antiguo y es estable para iguales', Dp.compararAntiguedad(viejos[3], viejos[0]) < 0 && Dp.compararAntiguedad(viejos[4], viejos[0]) < 0 && Dp.compararAntiguedad(viejos[0], viejos[0]) === 0)
+const rutaAntigua = Dp.agruparPorDestino([dest({ numero: '4002', pedido_numero: '4002', comuna: 'NO SE PROPORCIONÓ DIRECCIÓN DE ENVÍO', fecha_pedido: '2026-10-01' }), dest({ numero: '4001', pedido_numero: '4001', comuna: 'NO SE PROPORCIONÓ DIRECCIÓN DE ENVÍO', fecha_pedido: '2026-10-20' })])
+chequeo('"Sin dirección" sigue ordenado por número de pedido, como antes', eq(rutaAntigua.sinDireccion.map((o) => o.numero), ['4001', '4002']))
+
+sec('Lista plana y bloques de cada página')
+const grande = [
+  ...Array.from({ length: 4 }, (_, i) => dest({ numero: String(5000 + i), pedido_numero: String(5000 + i), comuna: 'Providencia', fecha_pedido: '2026-10-0' + (i + 1) })),
+  ...Array.from({ length: 3 }, (_, i) => dest({ numero: String(5100 + i), pedido_numero: String(5100 + i), comuna: 'Las Condes', fecha_pedido: '2026-10-0' + (i + 1) })),
+  ...Array.from({ length: 3 }, (_, i) => dest({ numero: String(5200 + i), pedido_numero: String(5200 + i), comuna: 'Antofagasta', region: 'Antofagasta', fecha_pedido: '2026-10-0' + (i + 1) })),
+  dest({ numero: '5300', pedido_numero: '5300', comuna: 'NO SE PROPORCIONÓ DIRECCIÓN DE ENVÍO' }),
+  dest({ numero: '5400', pedido_numero: '5400', comuna: 'RETIRO TIENDA' }),
+]
+const lista = Dp.aplanarDespachos(Dp.agruparPorDestino(grande))
+chequeo('la lista plana sigue el orden de pantalla: Las Condes, Providencia, Antofagasta, Sin dirección y Retiro (12 muebles)', lista.length === 12 && eq(lista.map((f) => f.titulo).filter((t, i, a) => a.indexOf(t) === i), ['Las Condes', 'Providencia', 'Antofagasta', 'Sin dirección', 'Retiro en tienda']), lista.map((f) => f.titulo).join())
+chequeo('cada fila sabe su posición dentro del grupo y el tamaño del grupo completo', lista[0].indice === 0 && lista[0].totalGrupo === 3 && lista[5].titulo === 'Providencia' && lista[5].indice === 2 && lista[5].totalGrupo === 4)
+const unaPagina = Dp.bloquesDeFilas(lista.slice(0, 5)) // Las Condes (3) y 2 de Providencia
+chequeo('una página que corta un grupo: el último bloque "sigue" y no es continuación', unaPagina.length === 2 && unaPagina[1].titulo === 'Providencia' && unaPagina[1].muebles.length === 2 && unaPagina[1].sigue === true && unaPagina[1].continua === false && unaPagina[0].sigue === false)
+const siguiente = Dp.bloquesDeFilas(lista.slice(5, 11))
+chequeo('la página siguiente repite el encabezado del grupo cortado: primer bloque "continúa" (Providencia, 2 de 4)', siguiente[0].titulo === 'Providencia' && siguiente[0].continua === true && siguiente[0].sigue === false && siguiente[0].muebles.length === 2 && siguiente[0].totalGrupo === 4, JSON.stringify(siguiente.map((b) => [b.titulo, b.continua, b.sigue])))
+chequeo('el encabezado de región va en el primer bloque de cada región de la página (también si es continuación)', unaPagina[0].nuevaRegion === true && unaPagina[1].nuevaRegion === false && siguiente[0].nuevaRegion === true && siguiente[1].nuevaRegion === true && siguiente[1].region === 'Antofagasta')
+chequeo('"Sin dirección" y "Retiro" no llevan encabezado de región', Dp.bloquesDeFilas(lista.slice(10)).every((b) => b.nuevaRegion === false))
+chequeo('los bloques no se pierden muebles: la suma de todas las páginas de 5 es la lista completa', (() => { let n = 0; for (let i = 0; i < lista.length; i += 5) n += Dp.bloquesDeFilas(lista.slice(i, i + 5)).reduce((s, b) => s + b.muebles.length, 0); return n === lista.length })())
 
 sec('Por fecha')
 const hoy = '2026-11-17'

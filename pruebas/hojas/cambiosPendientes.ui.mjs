@@ -51,13 +51,22 @@ const srv = (p, fn, ...args) => p.evaluate(fn, ...args)
 /* Clic real (con actividad del usuario) sobre una casilla identificada por su etiqueta. */
 async function casilla(p, numero, etapa, { clic = true } = {}) {
   const e = etapa === 'listo' ? 'LISTO' : etapa.toUpperCase()
-  const h = await p.evaluateHandle((n, et) => {
+  const buscar = () => p.evaluateHandle((n, et) => {
     const base = `${et} del pedido ${n}`
     return [...document.querySelectorAll('input[type=checkbox]')].find((i) => {
       const l = i.getAttribute('aria-label') || ''
       return l === base || l.startsWith(base + ' (')
     }) ?? null
   }, numero, e)
+  let h = await buscar()
+  /* La lista de Pedidos se pagina de a 20: si el mueble no está en esta página, se recorren las demás. */
+  if (!h.asElement()) {
+    while (await clicEnBoton(p, 'Anterior')) { /* hasta la primera página */ }
+    for (;;) {
+      h = await buscar()
+      if (h.asElement() || !(await clicEnBoton(p, 'Siguiente'))) break
+    }
+  }
   const el = h.asElement()
   if (!el) return null
   const estado = await el.evaluate((i) => ({ marcada: i.checked, pendiente: i.closest('label')?.getAttribute('data-pendiente') === 'si', problema: i.closest('label')?.getAttribute('data-problema') === 'si' }))
@@ -65,6 +74,14 @@ async function casilla(p, numero, etapa, { clic = true } = {}) {
   return estado
 }
 const estadoCasilla = (p, numero, etapa) => casilla(p, numero, etapa, { clic: false })
+async function clicEnBoton(p, etiqueta) {
+  const h = await p.evaluateHandle((t) => [...document.querySelectorAll('button')].find((b) => b.textContent?.trim().startsWith(t) && !b.disabled) ?? null, etiqueta)
+  const el = h.asElement()
+  if (!el) return false
+  await el.click()
+  await dormir(450)
+  return true
+}
 async function boton(p, etiqueta) {
   const h = await p.evaluateHandle((t) => [...document.querySelectorAll('button')].find((b) => b.textContent?.trim().startsWith(t) && !b.disabled) ?? null, etiqueta)
   const el = h.asElement()
