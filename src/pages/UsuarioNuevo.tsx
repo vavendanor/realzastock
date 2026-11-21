@@ -8,7 +8,7 @@ import { Card } from '../components/ui/Card'
 import { Input } from '../components/ui/Input'
 import { Select } from '../components/ui/Select'
 import { useEsEscritorio } from '../hooks/useMediaQuery'
-import { crearUsuario, ROL_LABEL, ROLES } from '../lib/usuarios'
+import { crearUsuario, opcionesDeRol } from '../lib/usuarios'
 import type { UserRole } from '../types'
 
 export function UsuarioNuevo() {
@@ -18,7 +18,7 @@ export function UsuarioNuevo() {
   const [nombre, setNombre] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [rol, setRol] = useState<UserRole>('vendedor')
+  const [rol, setRol] = useState<UserRole>('bodega')
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -92,7 +92,7 @@ export function UsuarioNuevo() {
               size={esEscritorio ? 'md' : 'touch'}
               value={rol}
               onChange={(e) => setRol(e.target.value as UserRole)}
-              options={ROLES.map((r) => ({ value: r, label: ROL_LABEL[r] }))}
+              options={opcionesDeRol()}
             />
           </div>
 

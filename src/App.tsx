@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { ProtectedRoute } from './components/ProtectedRoute'
+import { MODULOS_COMERCIALES_ACTIVOS } from './lib/modulos'
 import { HojaNueva } from './pages/HojaNueva'
 import { HojaDetalle } from './pages/HojaDetalle'
 import { Hojas } from './pages/Hojas'
@@ -16,10 +17,10 @@ import { Usuarios } from './pages/Usuarios'
 import { Ventas } from './pages/Ventas'
 import { VentaNueva } from './pages/VentaNueva'
 
-/* Módulos listos: Inventario (administrador), Ventas (administrador y
-   vendedor), Pedidos (órdenes de fabricación de Shopify: administrador y
+/* Módulos visibles: Pedidos (órdenes de fabricación de Shopify: administrador y
    bodega), Hojas de fabricación y Despachos (administrador y bodega), Probador de
-   colores (administrador y bodega) y Usuarios (exclusivo de administrador). */
+   colores (administrador y bodega) y Usuarios (exclusivo de administrador).
+   Ocultos (código intacto): Inventario y Ventas, y el rol vendedor. */
 function App() {
   return (
     <Routes>
@@ -34,47 +35,53 @@ function App() {
         }
       />
 
-      <Route
-        path="/inventario"
-        element={
-          <ProtectedRoute roles={['administrador']}>
-            <Inventario />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/inventario/nuevo"
-        element={
-          <ProtectedRoute roles={['administrador']}>
-            <InventarioForm />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/inventario/:id"
-        element={
-          <ProtectedRoute roles={['administrador']}>
-            <InventarioForm />
-          </ProtectedRoute>
-        }
-      />
+      {/* Inventario y Ventas (pedidos manuales) están ocultos: sin estas rutas, escribir la URL cae en el "*" de abajo
+          y redirige al inicio. Se reactivan con MODULOS_COMERCIALES_ACTIVOS (lib/modulos.ts). */}
+      {MODULOS_COMERCIALES_ACTIVOS && (
+        <>
+          <Route
+            path="/inventario"
+            element={
+              <ProtectedRoute roles={['administrador']}>
+                <Inventario />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/inventario/nuevo"
+            element={
+              <ProtectedRoute roles={['administrador']}>
+                <InventarioForm />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/inventario/:id"
+            element={
+              <ProtectedRoute roles={['administrador']}>
+                <InventarioForm />
+              </ProtectedRoute>
+            }
+          />
 
-      <Route
-        path="/ventas"
-        element={
-          <ProtectedRoute roles={['administrador', 'vendedor']}>
-            <Ventas />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/ventas/nueva"
-        element={
-          <ProtectedRoute roles={['administrador', 'vendedor']}>
-            <VentaNueva />
-          </ProtectedRoute>
-        }
-      />
+          <Route
+            path="/ventas"
+            element={
+              <ProtectedRoute roles={['administrador', 'vendedor']}>
+                <Ventas />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/ventas/nueva"
+            element={
+              <ProtectedRoute roles={['administrador', 'vendedor']}>
+                <VentaNueva />
+              </ProtectedRoute>
+            }
+          />
+        </>
+      )}
 
       <Route
         path="/pedidos"

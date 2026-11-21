@@ -73,7 +73,7 @@ export function Login() {
             <div className="rh-eyebrow">PANEL INTERNO</div>
             <h1 style={{ marginTop: 'var(--space-2)' }}>Inventario, ventas y pedidos</h1>
             <p style={{ font: 'var(--type-body)', color: 'var(--text-muted)', marginTop: 'var(--space-3)', maxWidth: '44ch' }}>
-              Ingresa con tu cuenta de Realza Hogar. El acceso depende de tu rol: administración, ventas o bodega.
+              Ingresa con tu cuenta de Realza Hogar. El acceso depende de tu rol: administración o bodega.
             </p>
           </div>
 

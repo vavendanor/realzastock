@@ -9,7 +9,7 @@ import { IconButton } from '../components/ui/IconButton'
 import { Select } from '../components/ui/Select'
 import { useAuth } from '../hooks/useAuth'
 import { useEsEscritorio } from '../hooks/useMediaQuery'
-import { actualizarRolUsuario, listarUsuarios, ROL_LABEL, ROLES } from '../lib/usuarios'
+import { actualizarRolUsuario, listarUsuarios, opcionesDeRol } from '../lib/usuarios'
 import type { Usuario, UserRole } from '../types'
 
 function formatearFecha(iso: string) {
@@ -70,7 +70,7 @@ export function Usuarios() {
         value={usuario.rol}
         disabled={esUnoMismo || guardandoId === usuario.id}
         onChange={(e) => void cambiarRol(usuario, e.target.value as UserRole)}
-        options={ROLES.map((r) => ({ value: r, label: ROL_LABEL[r] }))}
+        options={opcionesDeRol(usuario.rol)}
         hint={esUnoMismo ? 'No puedes cambiar tu propio rol' : undefined}
         wrapperStyle={{ width: esEscritorio ? 180 : '100%' }}
       />

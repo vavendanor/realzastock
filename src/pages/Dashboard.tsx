@@ -14,6 +14,7 @@ import { useEsEscritorio } from '../hooks/useMediaQuery'
 import { clp, hoy } from '../lib/format'
 import { listarVariantes, STOCK_MINIMO_DEFAULT } from '../lib/inventario'
 import { contarOrdenesPorEstado, formatearFechaPedido, listarUltimasOrdenes, type ConteoEstados } from '../lib/ordenes'
+import { MODULOS_COMERCIALES_ACTIVOS } from '../lib/modulos'
 import { listarVentas } from '../lib/ventas'
 import type { OrdenFabricacion, ProductoVariante } from '../types'
 
@@ -38,8 +39,8 @@ export function Dashboard() {
       try {
         const fechaHoy = hoy()
         const [datosVariantes, datosVentasHoy, datosConteo, datosUltimas] = await Promise.all([
-          listarVariantes(),
-          listarVentas({ desde: fechaHoy, hasta: fechaHoy }),
+          MODULOS_COMERCIALES_ACTIVOS ? listarVariantes() : Promise.resolve([] as ProductoVariante[]),
+          MODULOS_COMERCIALES_ACTIVOS ? listarVentas({ desde: fechaHoy, hasta: fechaHoy }) : Promise.resolve([]),
           contarOrdenesPorEstado(false),
           listarUltimasOrdenes(5),
         ])
@@ -94,7 +95,8 @@ export function Dashboard() {
     { key: 'showroom', header: 'Showroom', align: 'right', render: (r) => <StockLevel value={r.stockShowroom} min={2} showBar={false} /> },
   ]
 
-  const alertasStock = (
+  /* Con los módulos comerciales ocultos, el resumen no muestra stock ni ventas (ver lib/modulos.ts). */
+  const alertasStock = !MODULOS_COMERCIALES_ACTIVOS ? null : (
     <Card
       padding={esEscritorio ? '0' : undefined}
       title="Alertas de stock"
@@ -199,10 +201,11 @@ export function Dashboard() {
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: esEscritorio ? 'repeat(3,1fr)' : '1fr',
+          gridTemplateColumns: esEscritorio ? `repeat(${MODULOS_COMERCIALES_ACTIVOS ? 3 : 1},1fr)` : '1fr',
           gap: esEscritorio ? 'var(--space-5)' : 'var(--space-3)',
         }}
       >
+        {MODULOS_COMERCIALES_ACTIVOS && (
         <KpiCard
           label="Productos con stock bajo"
           value={cargando ? '—' : todasLasBajas.length}
@@ -211,6 +214,8 @@ export function Dashboard() {
           footnote={cargando ? undefined : `de ${variantes.length} ${variantes.length === 1 ? 'variante' : 'variantes'}`}
           onClick={() => navigate('/inventario')}
         />
+        )}
+        {MODULOS_COMERCIALES_ACTIVOS && (
         <KpiCard
           label="Ventas del día"
           value={cargando ? '—' : clp(ventasHoy.total)}
@@ -219,6 +224,7 @@ export function Dashboard() {
           delta={cargando ? undefined : `${ventasHoy.cantidad} ${ventasHoy.cantidad === 1 ? 'venta' : 'ventas'}`}
           onClick={() => navigate('/ventas')}
         />
+        )}
         <KpiCard
           label="Muebles por fabricar"
           value={cargando ? '—' : porFabricar}
@@ -232,7 +238,7 @@ export function Dashboard() {
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: esEscritorio ? '1.25fr 1fr' : '1fr',
+          gridTemplateColumns: esEscritorio && MODULOS_COMERCIALES_ACTIVOS ? '1.25fr 1fr' : '1fr',
           gap: esEscritorio ? 'var(--space-5)' : 'var(--space-4)',
           alignItems: 'start',
         }}

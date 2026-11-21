@@ -1,4 +1,5 @@
 import type { Usuario, UserRole } from '../types'
+import { ROLES_ACTIVOS } from './modulos'
 import { supabase } from './supabaseClient'
 
 export const ROL_LABEL: Record<UserRole, string> = {
@@ -7,7 +8,16 @@ export const ROL_LABEL: Record<UserRole, string> = {
   bodega: 'Bodega',
 }
 
-export const ROLES: UserRole[] = ['administrador', 'vendedor', 'bodega']
+/* Los roles que se ofrecen en los selectores. 'vendedor' sigue existiendo en la base de datos y en el tipo, pero
+   está oculto (ver lib/modulos.ts). */
+export const ROLES: UserRole[] = ROLES_ACTIVOS
+
+/* Opciones del selector de rol de un usuario. Si el usuario ya tiene un rol oculto (un vendedor de antes) se
+   muestra tal cual, para no dejar el selector en blanco, pero no se ofrece a nadie más. */
+export function opcionesDeRol(actual?: UserRole): { value: UserRole; label: string }[] {
+  const opciones = ROLES.map((r) => ({ value: r, label: ROL_LABEL[r] }))
+  return actual && !ROLES.includes(actual) ? [{ value: actual, label: `${ROL_LABEL[actual]} (sin acceso)` }, ...opciones] : opciones
+}
 
 interface UsuarioRaw {
   id: string

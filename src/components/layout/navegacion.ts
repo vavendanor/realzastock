@@ -1,4 +1,5 @@
 import { LayoutDashboard, Package, Palette, Receipt, Truck, Users, type LucideIcon } from 'lucide-react'
+import { MODULOS_COMERCIALES_ACTIVOS, rolTieneAcceso } from '../../lib/modulos'
 import type { UserRole } from '../../types'
 
 /* Opción de un menú desplegable. `to` es su ruta; la opción se marca como activa en esa ruta
@@ -25,12 +26,15 @@ export interface NavItem {
   roles?: UserRole[]
   /* Si tiene, el elemento es un desplegable: ya no es un enlace, abre estas opciones. */
   hijos?: NavHijo[]
+  /* Módulo comercial (Inventario, Ventas): solo se muestra si MODULOS_COMERCIALES_ACTIVOS está encendido. */
+  comercial?: boolean
 }
 
 const NAV: NavItem[] = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, to: '/', roles: ['administrador'] },
-  { id: 'inventario', label: 'Inventario', icon: Package, to: '/inventario', roles: ['administrador'] },
-  { id: 'ventas', label: 'Ventas', icon: Receipt, to: '/ventas', roles: ['administrador', 'vendedor'] },
+  /* Inventario y Ventas siguen definidos pero ocultos mientras los módulos comerciales estén apagados (lib/modulos.ts). */
+  { id: 'inventario', label: 'Inventario', icon: Package, to: '/inventario', roles: ['administrador'], comercial: true },
+  { id: 'ventas', label: 'Ventas', icon: Receipt, to: '/ventas', roles: ['administrador', 'vendedor'], comercial: true },
   {
     id: 'pedidos',
     label: 'Pedidos',
@@ -58,13 +62,15 @@ export const hijoActivo = (hijo: NavHijo, ruta: string) => hijo.activaEn.test(ru
 export const itemActivo = (item: NavItem, ruta: string) => (item.hijos ? item.hijos.some((h) => hijoActivo(h, ruta)) : false)
 
 export function navParaRol(rol: UserRole | null): NavItem[] {
-  return NAV.filter((item) => !item.roles || (rol !== null && item.roles.includes(rol)))
+  if (!rolTieneAcceso(rol)) return []
+  return NAV.filter((item) => (!item.comercial || MODULOS_COMERCIALES_ACTIVOS) && (!item.roles || (rol !== null && item.roles.includes(rol))))
 }
 
 /* A dónde mandar a cada rol al entrar. El administrador no está acá: se
    queda en "/", que es justamente donde vive su Dashboard (ver Inicio.tsx). */
 export function rutaInicial(rol: UserRole | null): string | null {
-  if (rol === 'vendedor') return '/ventas'
+  /* El vendedor está oculto: no tiene a dónde ir, Inicio le muestra que su cuenta no tiene acceso. */
+  if (rol === 'vendedor') return MODULOS_COMERCIALES_ACTIVOS ? '/ventas' : null
   if (rol === 'bodega') return '/pedidos'
   return null
 }
