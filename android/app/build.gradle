@@ -1,10 +1,16 @@
 apply plugin: 'com.android.application'
 
+/* Firma del release: las claves están en C:/Users/<usuario>/keystores/realza-hogar/keystore.properties (fuera del repo y de OneDrive). Si el archivo no existe, el
+   release sale sin firmar y Gradle avisa. */
+def keystorePropsFile = new File(System.getProperty('user.home'), 'keystores/realza-hogar/keystore.properties')
+def keystoreProps = new Properties()
+if (keystorePropsFile.exists()) keystorePropsFile.withInputStream { keystoreProps.load(it) }
+
 android {
-    namespace = "com.realzahogar.panel"
+    namespace = "cl.realzahogar.stock"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "com.realzahogar.panel"
+        applicationId "cl.realzahogar.stock"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
@@ -16,8 +22,19 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            if (keystorePropsFile.exists()) {
+                storeFile file(keystoreProps['storeFile'])
+                storePassword keystoreProps['storePassword']
+                keyAlias keystoreProps['keyAlias']
+                keyPassword keystoreProps['keyPassword']
+            }
+        }
+    }
     buildTypes {
         release {
+            if (keystorePropsFile.exists()) signingConfig signingConfigs.release
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }

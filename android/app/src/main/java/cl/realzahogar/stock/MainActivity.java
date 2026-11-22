@@ -1,4 +1,4 @@
-package com.realzahogar.panel;
+package cl.realzahogar.stock;
 
 import com.getcapacitor.BridgeActivity;
 

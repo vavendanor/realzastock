@@ -19,6 +19,8 @@ npm install --no-save puppeteer-core @electric-sql/pglite
 ```
 node --import ./pruebas/registrar-ts.mjs pruebas/hojas/excelHoja.test.mjs
 node --import ./pruebas/registrar-ts.mjs pruebas/hojas/hojasLib.test.mjs
+node --import ./pruebas/registrar-ts.mjs pruebas/app/navegacionApp.test.mjs   # menú y rutas del APK de bodega
+node pruebas/app/configApk.test.mjs                                          # capacitor.config, Android y firma
 ```
 
 - `excelHoja.test.mjs`: reglas de cada celda del Excel, semáforo del plazo (verde, amarillo, rojo) y el
@@ -52,6 +54,7 @@ node pruebas/pedidos/paginador.ui.mjs        # /pedidos y /hojas/nueva: paginado
 node pruebas/hojas/hojas.ui.mjs                # menú, crear hoja, tarjetas, permisos y planilla de pedidos del Dashboard
 node pruebas/hojas/cambiosPendientes.ui.mjs    # guardado diferido de casillas (4b)
 node pruebas/hojas/rutas.ui.mjs                # rutas, botón atrás, 404 y login
+node pruebas/app/app.ui.mjs                    # APK de bodega (user agent con sufijo): solo bodega, menú y rutas; la web normal no cambia
 ```
 
 4. Al terminar: parar el servidor y `node pruebas/arnes/armar.mjs desarmar` (el banco no se sube a Git).

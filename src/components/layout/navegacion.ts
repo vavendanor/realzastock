@@ -1,5 +1,6 @@
 import { LayoutDashboard, Package, Palette, Receipt, Truck, Users, type LucideIcon } from 'lucide-react'
 import { MODULOS_COMERCIALES_ACTIVOS, rolTieneAcceso } from '../../lib/modulos'
+import { esApp } from '../../lib/plataforma'
 import type { UserRole } from '../../types'
 
 /* Opción de un menú desplegable. `to` es su ruta; la opción se marca como activa en esa ruta
@@ -28,6 +29,8 @@ export interface NavItem {
   hijos?: NavHijo[]
   /* Módulo comercial (Inventario, Ventas): solo se muestra si MODULOS_COMERCIALES_ACTIVOS está encendido. */
   comercial?: boolean
+  /* Si se muestra en el APK de bodega, que tiene solo el menú de producción. */
+  enApp?: boolean
 }
 
 const NAV: NavItem[] = [
@@ -40,6 +43,7 @@ const NAV: NavItem[] = [
     label: 'Pedidos',
     icon: Truck,
     roles: ['administrador', 'bodega'],
+    enApp: true,
     hijos: [
       { id: 'pedidos', label: 'Pedidos', to: '/pedidos', activaEn: /^\/pedidos(\/|$)/ },
       { id: 'hojas', label: 'Hojas de fabricación', to: '/hojas', activaEn: /^\/hojas(\/|$)/ },
@@ -61,7 +65,10 @@ const NAV: NavItem[] = [
 export const hijoActivo = (hijo: NavHijo, ruta: string) => hijo.activaEn.test(ruta)
 export const itemActivo = (item: NavItem, ruta: string) => (item.hijos ? item.hijos.some((h) => hijoActivo(h, ruta)) : false)
 
-export function navParaRol(rol: UserRole | null): NavItem[] {
+/* `enApp`: true dentro del APK de bodega. Ahí solo entra el rol bodega y el menú es solo Pedidos, Hojas de fabricación y
+   Despachos. En la web normal no cambia nada. */
+export function navParaRol(rol: UserRole | null, enApp: boolean = esApp()): NavItem[] {
+  if (enApp) return rol === 'bodega' ? NAV.filter((item) => item.enApp) : []
   if (!rolTieneAcceso(rol)) return []
   return NAV.filter((item) => (!item.comercial || MODULOS_COMERCIALES_ACTIVOS) && (!item.roles || (rol !== null && item.roles.includes(rol))))
 }
@@ -73,6 +80,12 @@ export function rutaInicial(rol: UserRole | null): string | null {
   if (rol === 'vendedor') return MODULOS_COMERCIALES_ACTIVOS ? '/ventas' : null
   if (rol === 'bodega') return '/pedidos'
   return null
+}
+
+/* Dentro del APK solo existen las pantallas de producción (y el inicio, que redirige a Pedidos). El resto -Dashboard,
+   Usuarios, Probador, y lo oculto- redirige al inicio. */
+export function rutaPermitidaEnApp(ruta: string) {
+  return esRutaDeProduccion(ruta)
 }
 
 /* Las pantallas de producción: Pedidos (lista y detalle de un mueble), las hojas de

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- nogal-700: color de marca (barra de estado y barras de la app). -->
+    <color name="colorPrimary">#58402D</color>
+    <color name="colorPrimaryDark">#58402D</color>
+    <color name="colorAccent">#58402D</color>
+</resources>

@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { ProtectedRoute } from './components/ProtectedRoute'
+import { useAppNativa } from './hooks/useAppNativa'
 import { MODULOS_COMERCIALES_ACTIVOS } from './lib/modulos'
 import { HojaNueva } from './pages/HojaNueva'
 import { HojaDetalle } from './pages/HojaDetalle'
@@ -22,6 +23,7 @@ import { VentaNueva } from './pages/VentaNueva'
    colores (administrador y bodega) y Usuarios (exclusivo de administrador).
    Ocultos (código intacto): Inventario y Ventas, y el rol vendedor. */
 function App() {
+  useAppNativa()
   return (
     <Routes>
       <Route path="/login" element={<Login />} />

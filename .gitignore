@@ -35,3 +35,9 @@ archivos de contexto/
 *.xlsx
 *.xls
 *.csv
+
+# Firma del APK: nunca al repo
+*.jks
+*.keystore
+keystore.properties
+android/keystore/
