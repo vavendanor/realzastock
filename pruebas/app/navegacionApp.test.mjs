@@ -15,7 +15,7 @@ for (const rol of ['administrador', 'vendedor', null]) chequeo(`${rol}: el menú
 
 console.log('== Web normal (no cambia)')
 chequeo('bodega: Pedidos y Probador, como siempre', etiquetas('bodega', false) === 'Pedidos|Probador de colores', etiquetas('bodega', false))
-chequeo('administrador: Dashboard, Pedidos, Probador y Usuarios', etiquetas('administrador', false) === 'Dashboard|Pedidos|Probador de colores|Usuarios', etiquetas('administrador', false))
+chequeo('administrador: Dashboard, Inventario, Pedidos, Probador y Usuarios', etiquetas('administrador', false) === 'Dashboard|Inventario|Pedidos|Probador de colores|Usuarios', etiquetas('administrador', false))
 chequeo('vendedor: sin menú', N.navParaRol('vendedor', false).length === 0)
 
 console.log('== Rutas permitidas en el APK')

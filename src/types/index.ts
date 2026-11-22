@@ -4,12 +4,6 @@ export type UbicacionStock = 'bodega' | 'showroom'
 
 export type CanalVenta = 'online' | 'showroom'
 
-export interface Producto {
-  id: string
-  modelo: string
-  descripcion: string | null
-}
-
 /* Fila del listado de inventario: una variante con su producto y su stock
    ya pivoteado por ubicación (en la BD el stock vive en filas separadas
    de `inventario`, una por ubicación). */

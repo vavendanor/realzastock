@@ -1,8 +1,8 @@
 import type { UserRole } from '../types'
 
 /* Por ahora la app es solo de producción: la usan administrador y bodega.
-   Los módulos comerciales (Inventario, Ventas / pedidos manuales) y el rol vendedor siguen en el código, la
-   base de datos y las migraciones, pero están ocultos. Para volver a mostrarlos basta con poner esto en `true`
+   El módulo comercial (Ventas / pedidos manuales) y el rol vendedor siguen en el código, la base de datos y las
+   migraciones, pero están ocultos. (El Inventario de telas no es de esto: lo ve el administrador.) Para volver a mostrarlos basta con poner esto en `true`
    (y agregar 'vendedor' a ROLES_ACTIVOS). */
 export const MODULOS_COMERCIALES_ACTIVOS = false
 

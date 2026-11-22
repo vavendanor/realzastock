@@ -20,6 +20,8 @@ npm install --no-save puppeteer-core @electric-sql/pglite
 node --import ./pruebas/registrar-ts.mjs pruebas/hojas/excelHoja.test.mjs
 node --import ./pruebas/registrar-ts.mjs pruebas/hojas/hojasLib.test.mjs
 node --import ./pruebas/registrar-ts.mjs pruebas/app/navegacionApp.test.mjs   # menú y rutas del APK de bodega
+node --import ./pruebas/registrar-ts.mjs pruebas/hojas/atrasados.test.mjs     # alerta de piezas atrasadas del Dashboard
+node --import ./pruebas/registrar-ts.mjs pruebas/telas/telas.test.mjs          # inventario de telas: alerta de stock bajo, leer y mostrar metros
 node pruebas/app/configApk.test.mjs                                          # capacitor.config, Android y firma
 ```
 
@@ -34,6 +36,7 @@ node pruebas/app/configApk.test.mjs                                          # c
 
 ```
 node pruebas/despachos/migracion0018.test.mjs     # funciones de la 0018 por rol, disparador, sincronización
+node pruebas/telas/migracion0019.test.mjs         # tabla telas, ajustar_tela y permisos por rol
 node pruebas/despachos/scriptsSql0018.test.mjs    # los SQL de supabase/verificacion (pedidos de prueba y verificación por rol)
 node --import ./pruebas/registrar-ts.mjs pruebas/despachos/scriptsSqlOrden.test.mjs   # SQL de pedidos de prueba del orden y paginador, y el orden real de la app sobre ellos
 ```
@@ -55,6 +58,7 @@ node pruebas/hojas/hojas.ui.mjs                # menú, crear hoja, tarjetas, pe
 node pruebas/hojas/cambiosPendientes.ui.mjs    # guardado diferido de casillas (4b)
 node pruebas/hojas/rutas.ui.mjs                # rutas, botón atrás, 404 y login
 node pruebas/app/app.ui.mjs                    # APK de bodega (user agent con sufijo): solo bodega, menú y rutas; la web normal no cambia
+node --import ./pruebas/registrar-ts.mjs pruebas/telas/dashboardTelas.ui.mjs   # Dashboard (atrasados, telas bajas) e Inventario de telas, por rol
 ```
 
 4. Al terminar: parar el servidor y `node pruebas/arnes/armar.mjs desarmar` (el banco no se sube a Git).

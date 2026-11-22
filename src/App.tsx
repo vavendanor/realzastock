@@ -7,7 +7,6 @@ import { HojaDetalle } from './pages/HojaDetalle'
 import { Hojas } from './pages/Hojas'
 import { Inicio } from './pages/Inicio'
 import { Inventario } from './pages/Inventario'
-import { InventarioForm } from './pages/InventarioForm'
 import { Login } from './pages/Login'
 import { OrdenDetalle } from './pages/OrdenDetalle'
 import { Despachos } from './pages/Despachos'
@@ -20,8 +19,8 @@ import { VentaNueva } from './pages/VentaNueva'
 
 /* Módulos visibles: Pedidos (órdenes de fabricación de Shopify: administrador y
    bodega), Hojas de fabricación y Despachos (administrador y bodega), Probador de
-   colores (administrador y bodega) y Usuarios (exclusivo de administrador).
-   Ocultos (código intacto): Inventario y Ventas, y el rol vendedor. */
+   colores (administrador y bodega), Inventario de telas y Usuarios (exclusivos de administrador).
+   Ocultos (código intacto): Ventas y el rol vendedor. */
 function App() {
   useAppNativa()
   return (
@@ -37,35 +36,20 @@ function App() {
         }
       />
 
-      {/* Inventario y Ventas (pedidos manuales) están ocultos: sin estas rutas, escribir la URL cae en el "*" de abajo
-          y redirige al inicio. Se reactivan con MODULOS_COMERCIALES_ACTIVOS (lib/modulos.ts). */}
+      {/* Inventario de telas: solo el administrador (ni bodega ni el APK). */}
+      <Route
+        path="/inventario"
+        element={
+          <ProtectedRoute roles={['administrador']}>
+            <Inventario />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Ventas (pedidos manuales) está oculto: sin estas rutas, escribir la URL cae en el "*" de abajo y redirige al
+          inicio. Se reactiva con MODULOS_COMERCIALES_ACTIVOS (lib/modulos.ts). */}
       {MODULOS_COMERCIALES_ACTIVOS && (
         <>
-          <Route
-            path="/inventario"
-            element={
-              <ProtectedRoute roles={['administrador']}>
-                <Inventario />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/inventario/nuevo"
-            element={
-              <ProtectedRoute roles={['administrador']}>
-                <InventarioForm />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/inventario/:id"
-            element={
-              <ProtectedRoute roles={['administrador']}>
-                <InventarioForm />
-              </ProtectedRoute>
-            }
-          />
-
           <Route
             path="/ventas"
             element={

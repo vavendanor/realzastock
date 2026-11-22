@@ -27,7 +27,7 @@ export interface NavItem {
   roles?: UserRole[]
   /* Si tiene, el elemento es un desplegable: ya no es un enlace, abre estas opciones. */
   hijos?: NavHijo[]
-  /* Módulo comercial (Inventario, Ventas): solo se muestra si MODULOS_COMERCIALES_ACTIVOS está encendido. */
+  /* Módulo comercial (Ventas): solo se muestra si MODULOS_COMERCIALES_ACTIVOS está encendido. */
   comercial?: boolean
   /* Si se muestra en el APK de bodega, que tiene solo el menú de producción. */
   enApp?: boolean
@@ -35,8 +35,8 @@ export interface NavItem {
 
 const NAV: NavItem[] = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, to: '/', roles: ['administrador'] },
-  /* Inventario y Ventas siguen definidos pero ocultos mientras los módulos comerciales estén apagados (lib/modulos.ts). */
-  { id: 'inventario', label: 'Inventario', icon: Package, to: '/inventario', roles: ['administrador'], comercial: true },
+  { id: 'inventario', label: 'Inventario', icon: Package, to: '/inventario', roles: ['administrador'] },
+  /* Ventas sigue definido pero oculto mientras los módulos comerciales estén apagados (lib/modulos.ts). */
   { id: 'ventas', label: 'Ventas', icon: Receipt, to: '/ventas', roles: ['administrador', 'vendedor'], comercial: true },
   {
     id: 'pedidos',

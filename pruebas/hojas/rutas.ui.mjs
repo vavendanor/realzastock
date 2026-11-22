@@ -99,7 +99,7 @@ await seccion('C. Administrador: cada ruta, entrando directo por la URL')
 {
   const p = await pestana('administrador')
   const rutas = [
-    ['/', 'Dashboard'],
+    ['/', 'Dashboard'], ['/inventario', 'Inventario'],
     ['/pedidos', 'Pedidos'], ['/pedidos/11111111-1111-1111-1111-111111111111', ''], ['/probador', 'Probador'], ['/usuarios', 'Usuarios'], ['/usuarios/nuevo', ''],
   ]
   for (const [r, titulo] of rutas) {
@@ -107,8 +107,8 @@ await seccion('C. Administrador: cada ruta, entrando directo por la URL')
     const t = await texto(p)
     registrar(`admin: ${r} se queda en su ruta y muestra contenido`, fin === r && t.trim().length > 20 && (!titulo || t.includes(titulo)), `${fin} (${t.slice(0, 60).replace(/\n/g, ' ')})`)
   }
-  // Inventario y Ventas (pedidos manuales) están ocultos: la URL escrita a mano redirige al inicio.
-  for (const r of ['/inventario', '/inventario/nuevo', '/inventario/abc', '/ventas', '/ventas/nueva']) {
+  // Ventas (pedidos manuales) y las pantallas viejas de Inventario (nuevo producto, editar) no existen: la URL escrita a mano redirige al inicio.
+  for (const r of ['/inventario/nuevo', '/inventario/abc', '/ventas', '/ventas/nueva']) {
     const fin = await ir(p, r)
     registrar(`admin: ${r} (módulo oculto) redirige al inicio`, fin === '/' && (await texto(p)).includes('Dashboard'), fin)
   }
@@ -123,7 +123,7 @@ await seccion('D. Navegación con clic: no recarga la página')
   await ir(p, '/')
   await marcarSesion(p)
   const enlaces = await p.evaluate(() => [...document.querySelectorAll('nav a, nav button')].map((e) => e.textContent?.trim()))
-  registrar('el menú del administrador no tiene Inventario ni Ventas', !enlaces.some((t) => /^(Inventario|Ventas)/.test(t ?? '')), enlaces.join(','))
+  registrar('el menú del administrador tiene Inventario (de telas) y no tiene Ventas', enlaces.some((t) => /^Inventario/.test(t ?? '')) && !enlaces.some((t) => /^Ventas/.test(t ?? '')), enlaces.join(','))
   const camino = [['Pedidos', '/pedidos'], ['Probador', '/probador'], ['Usuarios', '/usuarios']]
   for (const [etiqueta, destino] of camino) {
     const hubo = await hacerClic(p, etiqueta, 'nav a')
@@ -192,7 +192,7 @@ await seccion('G. Permisos por rol')
     ['bodega', '/', '/pedidos'], ['bodega', '/inventario', '/pedidos'], ['bodega', '/ventas', '/pedidos'], ['bodega', '/ventas/nueva', '/pedidos'], ['bodega', '/inventario/nuevo', '/pedidos'], ['bodega', '/usuarios', '/pedidos'], ['bodega', '/probador', '/probador'], ['bodega', '/pedidos', '/pedidos'],
     // El vendedor está oculto: toda ruta termina en el inicio, donde se le dice que no tiene acceso.
     ['vendedor', '/', '/'], ['vendedor', '/pedidos', '/'], ['vendedor', '/hojas', '/'], ['vendedor', '/despachos', '/'], ['vendedor', '/probador', '/'], ['vendedor', '/usuarios', '/'], ['vendedor', '/inventario', '/'], ['vendedor', '/ventas', '/'], ['vendedor', '/ventas/nueva', '/'],
-    ['administrador', '/pedidos', '/pedidos'], ['administrador', '/usuarios', '/usuarios'], ['administrador', '/ventas', '/'], ['administrador', '/inventario', '/'],
+    ['administrador', '/pedidos', '/pedidos'], ['administrador', '/usuarios', '/usuarios'], ['administrador', '/ventas', '/'], ['administrador', '/inventario', '/inventario'],
   ]
   for (const [rol, desde, esperado] of casos) {
     const p = await pestana(rol)
@@ -250,7 +250,7 @@ await seccion('J. Celular: barra inferior de navegación')
   await ir(p, '/')
   await marcarSesion(p)
   const barra = await p.evaluate(() => [...document.querySelectorAll('nav a, nav button')].map((e) => e.textContent?.trim()))
-  registrar('móvil: la barra inferior no tiene Ventas ni Inventario', !barra.some((t) => /^(Inventario|Ventas)/.test(t ?? '')), barra.join(','))
+  registrar('móvil: la barra inferior tiene Inventario y no tiene Ventas', barra.some((t) => /^Inventario/.test(t ?? '')) && !barra.some((t) => /^Ventas/.test(t ?? '')), barra.join(','))
   for (const [etiqueta, destino] of [['Probador', '/probador'], ['Pedidos', '/pedidos'], ['Usuarios', '/usuarios']]) {
     const hubo = await hacerClic(p, etiqueta, 'nav a')
     registrar(`móvil: toque en "${etiqueta}" -> ${destino}`, hubo && ruta(p) === destino, ruta(p))

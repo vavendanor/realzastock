@@ -40,6 +40,7 @@ function fuente(tabla: string): Fila[] {
   if (tabla === 'ordenes_fabricacion') return filas
   if (tabla === 'feriados_chile') return FERIADOS.map((fecha) => ({ id: fecha, numero: fecha, fecha }))
   if (tabla === 'hojas_fabricacion') return hojas
+  if (tabla === 'telas') return rol() === 'administrador' ? telas : []
   if (tabla === 'hoja_fabricacion_pedidos') return hojaPedidos.map((h) => ({ ...h, id: h.hoja_id + h.pedido_numero, numero: h.pedido_numero }))
   if (tabla === 'hoja_fabricacion_piezas') return piezasDeHojas()
   return []
@@ -137,6 +138,10 @@ rep("else if (prop === 'lte') filtros.push((f) => String(f[a[0] as string]) <= S
 /* Despachos (0018): funciones del banco de pruebas, en despachos-falso.ts. */
 rep("/* ---- Consultas ---- */", readFileSync(`${AQUI}/despachos-falso.ts`, 'utf8') + "\n/* ---- Consultas ---- */")
 rep("    if (nombre === 'fijar_inicio_plazo')", "    if (['programar_despacho', 'quitar_despacho_programado', 'marcar_despachado'].includes(nombre)) return funcionDespacho(nombre, args as unknown as Record<string, unknown>)\n    if (nombre === 'fijar_inicio_plazo')")
+
+/* Inventario de telas (0019): tabla y función del banco de pruebas, en telas-falso.ts. */
+rep("/* ---- Consultas ---- */", readFileSync(`${AQUI}/telas-falso.ts`, 'utf8') + '\n/* ---- Consultas ---- */')
+rep("    if (nombre === 'fijar_inicio_plazo')", "    if (nombre === 'ajustar_tela') return ajustarTelaFalso(args as unknown as Record<string, unknown>)\n    if (nombre === 'fijar_inicio_plazo')")
 
 mkdirSync(`${RAIZ}/preview-tmp`, { recursive: true })
 writeFileSync(`${RAIZ}/preview-tmp/supabaseFalso.ts`, s)

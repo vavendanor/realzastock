@@ -1,31 +1,31 @@
-import { Banknote, Factory, TriangleAlert } from 'lucide-react'
+import { Banknote, Clock, Factory, Layers, TriangleAlert } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ExportarPedidos } from '../components/ExportarPedidos'
 import { Shell } from '../components/layout/Shell'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
-import { DataTable, type Column } from '../components/ui/DataTable'
 import { EstadoOrdenBadge } from '../components/ui/EstadoOrdenBadge'
 import { KpiCard } from '../components/ui/KpiCard'
-import { ColorDot, ProductThumb } from '../components/ui/ProductoVisual'
-import { StockLevel } from '../components/ui/StockLevel'
 import { useEsEscritorio } from '../hooks/useMediaQuery'
+import { listarPiezasAtrasadas, type PiezaAtrasada } from '../lib/atrasados'
+import { hoyEnChile } from '../lib/diasHabiles'
 import { clp, hoy } from '../lib/format'
-import { listarVariantes, STOCK_MINIMO_DEFAULT } from '../lib/inventario'
-import { contarOrdenesPorEstado, formatearFechaPedido, listarUltimasOrdenes, type ConteoEstados } from '../lib/ordenes'
 import { MODULOS_COMERCIALES_ACTIVOS } from '../lib/modulos'
+import { contarOrdenesPorEstado, formatearFechaPedido, listarUltimasOrdenes, type ConteoEstados } from '../lib/ordenes'
+import { formatearMetros, listarTelas, telasEnAlerta, type Tela } from '../lib/telas'
 import { listarVentas } from '../lib/ventas'
-import type { OrdenFabricacion, ProductoVariante } from '../types'
+import type { OrdenFabricacion } from '../types'
 
 /* Pantalla de inicio del administrador. Es solo lectura: las cifras y
    listas de acá son un resumen para decidir qué revisar, no un punto de
-   edición — para eso están Inventario, Ventas y Pedidos, un clic más allá. */
+   edición — para eso están Inventario y Pedidos, un clic más allá. */
 export function Dashboard() {
   const navigate = useNavigate()
   const esEscritorio = useEsEscritorio()
 
-  const [variantes, setVariantes] = useState<ProductoVariante[]>([])
+  const [telas, setTelas] = useState<Tela[]>([])
+  const [atrasadas, setAtrasadas] = useState<{ piezas: PiezaAtrasada[]; sinCalendario: boolean }>({ piezas: [], sinCalendario: false })
   const [ventasHoy, setVentasHoy] = useState<{ total: number; cantidad: number }>({ total: 0, cantidad: 0 })
   const [conteoOrdenes, setConteoOrdenes] = useState<ConteoEstados | null>(null)
   const [ultimasOrdenes, setUltimasOrdenes] = useState<OrdenFabricacion[]>([])
@@ -38,13 +38,15 @@ export function Dashboard() {
       setError(null)
       try {
         const fechaHoy = hoy()
-        const [datosVariantes, datosVentasHoy, datosConteo, datosUltimas] = await Promise.all([
-          MODULOS_COMERCIALES_ACTIVOS ? listarVariantes() : Promise.resolve([] as ProductoVariante[]),
+        const [datosTelas, datosAtrasadas, datosVentasHoy, datosConteo, datosUltimas] = await Promise.all([
+          listarTelas(),
+          listarPiezasAtrasadas(hoyEnChile()),
           MODULOS_COMERCIALES_ACTIVOS ? listarVentas({ desde: fechaHoy, hasta: fechaHoy }) : Promise.resolve([]),
           contarOrdenesPorEstado(false),
           listarUltimasOrdenes(5),
         ])
-        setVariantes(datosVariantes)
+        setTelas(datosTelas)
+        setAtrasadas(datosAtrasadas)
         setVentasHoy({
           cantidad: datosVentasHoy.length,
           total: datosVentasHoy.reduce((suma, venta) => suma + venta.total, 0),
@@ -60,83 +62,90 @@ export function Dashboard() {
     void cargar()
   }, [])
 
-  const todasLasBajas = variantes
-    .filter((v) => v.stockBodega + v.stockShowroom <= STOCK_MINIMO_DEFAULT)
-    .sort((a, b) => a.stockBodega + a.stockShowroom - (b.stockBodega + b.stockShowroom))
-  /* El KPI muestra el total de variantes bajo el mínimo; la lista de abajo
-     solo enseña las 5 más urgentes (menos stock primero). */
-  const variantesBajas = todasLasBajas.slice(0, 5)
-
+  const telasBajas = telasEnAlerta(telas)
   const porFabricar = conteoOrdenes?.por_fabricar ?? 0
   const listosParaDespachar = conteoOrdenes?.fabricado ?? 0
+  const columnasKpi = 3 + (MODULOS_COMERCIALES_ACTIVOS ? 1 : 0)
 
-  const columnasStock: Column<ProductoVariante>[] = [
-    {
-      key: 'modelo',
-      header: 'Variante',
-      render: (r) => (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-          <ProductThumb color={r.color} size={36} />
-          <div>
-            <div style={{ font: 'var(--type-body-strong)', color: 'var(--text-strong)' }}>{r.modelo}</div>
-            <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>
-              {r.material} · {r.color}
-            </div>
-          </div>
-        </div>
-      ),
-    },
-    {
-      key: 'sku',
-      header: 'SKU',
-      render: (r) => <span style={{ font: 'var(--type-numeric)', color: 'var(--text-muted)' }}>{r.sku}</span>,
-    },
-    { key: 'bodega', header: 'Bodega', align: 'right', render: (r) => <StockLevel value={r.stockBodega} min={STOCK_MINIMO_DEFAULT} /> },
-    { key: 'showroom', header: 'Showroom', align: 'right', render: (r) => <StockLevel value={r.stockShowroom} min={2} showBar={false} /> },
-  ]
-
-  /* Con los módulos comerciales ocultos, el resumen no muestra stock ni ventas (ver lib/modulos.ts). */
-  const alertasStock = !MODULOS_COMERCIALES_ACTIVOS ? null : (
+  const alertaAtrasados = (
     <Card
-      padding={esEscritorio ? '0' : undefined}
-      title="Alertas de stock"
-      subtitle="Las 5 variantes con menos unidades"
+      title="Pedidos atrasados"
+      subtitle={cargando ? 'Cargando...' : `${atrasadas.piezas.length} ${atrasadas.piezas.length === 1 ? 'pieza pasada' : 'piezas pasadas'} del plazo de 14 días hábiles`}
+      actions={
+        <Button size="sm" variant="ghost" onClick={() => navigate('/pedidos')}>
+          Ver pedidos
+        </Button>
+      }
+    >
+      <div data-alerta-atrasados style={{ display: 'flex', flexDirection: 'column' }}>
+        {atrasadas.sinCalendario && (
+          <span data-sin-calendario style={{ font: 'var(--type-caption)', color: 'var(--state-danger)', paddingBottom: 'var(--space-2)' }}>
+            Faltan feriados por cargar en alguno de esos años: los días de atraso pueden estar mal.
+          </span>
+        )}
+        {!cargando && atrasadas.piezas.length === 0 && (
+          <span data-sin-atrasados style={{ font: 'var(--type-body)', color: 'var(--text-muted)' }}>
+            No hay piezas atrasadas: todo lo que se está fabricando va dentro del plazo.
+          </span>
+        )}
+        <div style={{ maxHeight: 360, overflowY: 'auto' }}>
+          {atrasadas.piezas.map((pieza, i) => (
+            <div
+              key={pieza.id}
+              data-pieza-atrasada={pieza.numero}
+              onClick={() => navigate(`/pedidos/${pieza.id}`)}
+              style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', padding: 'var(--space-3) 0', borderTop: i ? '1px solid var(--border-hairline)' : 'none', cursor: 'pointer' }}
+            >
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ font: 'var(--type-body-strong)', color: 'var(--text-strong)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {pieza.numero} · {pieza.modelo}
+                </div>
+                <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{pieza.comuna}</div>
+              </div>
+              <span
+                data-dias-atraso={pieza.dias}
+                style={{ padding: '3px 10px', borderRadius: 'var(--radius-pill)', background: 'var(--state-danger-soft)', color: 'var(--state-danger)', font: 'var(--fw-bold) var(--text-body-sm)/1.3 var(--font-sans)', whiteSpace: 'nowrap' }}
+              >
+                Atrasado {pieza.dias} {pieza.dias === 1 ? 'día' : 'días'}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </Card>
+  )
+
+  const alertaTelas = (
+    <Card
+      title="Alertas de stock de telas"
+      subtitle="Telas en o bajo su mínimo"
       actions={
         <Button size="sm" variant="secondary" onClick={() => navigate('/inventario')}>
           Ver inventario
         </Button>
       }
     >
-      {esEscritorio ? (
-        <DataTable
-          rows={variantesBajas}
-          columns={columnasStock}
-          emptyLabel={cargando ? 'Cargando...' : 'Ningún producto está bajo el mínimo ahora mismo'}
-        />
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-          {!cargando && variantesBajas.length === 0 && (
-            <span style={{ font: 'var(--type-body)', color: 'var(--text-muted)' }}>
-              Ningún producto está bajo el mínimo ahora mismo.
-            </span>
-          )}
-          {variantesBajas.map((v) => (
-            <div key={v.id} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-              <ProductThumb color={v.color} size={36} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ font: 'var(--type-body-strong)', color: 'var(--text-strong)' }}>{v.modelo}</div>
-                <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>
-                  <ColorDot color={v.color} /> · {v.material}
-                </div>
-              </div>
-              <div style={{ textAlign: 'right' }}>
-                <StockLevel value={v.stockBodega + v.stockShowroom} min={STOCK_MINIMO_DEFAULT} showBar={false} />
-                <div style={{ font: 'var(--type-caption)', color: 'var(--text-faint)' }}>total</div>
-              </div>
+      <div data-alerta-telas style={{ display: 'flex', flexDirection: 'column' }}>
+        {!cargando && telasBajas.length === 0 && (
+          <span data-sin-telas-bajas style={{ font: 'var(--type-body)', color: 'var(--text-muted)' }}>
+            Ninguna tela está en su mínimo: el stock está sobre lo necesario.
+          </span>
+        )}
+        {telasBajas.map((tela, i) => (
+          <div
+            key={tela.id}
+            data-tela-baja={tela.nombre}
+            style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', padding: 'var(--space-3) 0', borderTop: i ? '1px solid var(--border-hairline)' : 'none' }}
+          >
+            <TriangleAlert size={16} color="var(--state-danger)" />
+            <div style={{ flex: 1, minWidth: 0, font: 'var(--type-body-strong)', color: 'var(--text-strong)' }}>{tela.nombre}</div>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ font: 'var(--type-numeric)', color: 'var(--state-danger)' }}>{formatearMetros(tela.metros)}</div>
+              <div style={{ font: 'var(--type-caption)', color: 'var(--text-faint)' }}>mínimo {formatearMetros(tela.stockMinimo)}</div>
             </div>
-          ))}
-        </div>
-      )}
+          </div>
+        ))}
+      </div>
     </Card>
   )
 
@@ -201,29 +210,35 @@ export function Dashboard() {
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: esEscritorio ? `repeat(${MODULOS_COMERCIALES_ACTIVOS ? 3 : 1},1fr)` : '1fr',
+          gridTemplateColumns: esEscritorio ? `repeat(${columnasKpi},1fr)` : '1fr',
           gap: esEscritorio ? 'var(--space-5)' : 'var(--space-3)',
         }}
       >
-        {MODULOS_COMERCIALES_ACTIVOS && (
         <KpiCard
-          label="Productos con stock bajo"
-          value={cargando ? '—' : todasLasBajas.length}
-          tone="danger"
-          icon={<TriangleAlert size={16} />}
-          footnote={cargando ? undefined : `de ${variantes.length} ${variantes.length === 1 ? 'variante' : 'variantes'}`}
+          label="Piezas atrasadas"
+          value={cargando ? '—' : atrasadas.piezas.length}
+          tone={atrasadas.piezas.length > 0 ? 'danger' : 'success'}
+          icon={<Clock size={16} />}
+          footnote={cargando ? undefined : 'pasadas de los 14 días hábiles'}
+          onClick={() => navigate('/pedidos')}
+        />
+        <KpiCard
+          label="Telas con stock bajo"
+          value={cargando ? '—' : telasBajas.length}
+          tone={telasBajas.length > 0 ? 'danger' : 'success'}
+          icon={<Layers size={16} />}
+          footnote={cargando ? undefined : `de ${telas.length} ${telas.length === 1 ? 'tela' : 'telas'}`}
           onClick={() => navigate('/inventario')}
         />
-        )}
         {MODULOS_COMERCIALES_ACTIVOS && (
-        <KpiCard
-          label="Ventas del día"
-          value={cargando ? '—' : clp(ventasHoy.total)}
-          tone="success"
-          icon={<Banknote size={16} />}
-          delta={cargando ? undefined : `${ventasHoy.cantidad} ${ventasHoy.cantidad === 1 ? 'venta' : 'ventas'}`}
-          onClick={() => navigate('/ventas')}
-        />
+          <KpiCard
+            label="Ventas del día"
+            value={cargando ? '—' : clp(ventasHoy.total)}
+            tone="success"
+            icon={<Banknote size={16} />}
+            delta={cargando ? undefined : `${ventasHoy.cantidad} ${ventasHoy.cantidad === 1 ? 'venta' : 'ventas'}`}
+            onClick={() => navigate('/ventas')}
+          />
         )}
         <KpiCard
           label="Muebles por fabricar"
@@ -238,13 +253,16 @@ export function Dashboard() {
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: esEscritorio && MODULOS_COMERCIALES_ACTIVOS ? '1.25fr 1fr' : '1fr',
+          gridTemplateColumns: esEscritorio ? '1.25fr 1fr' : '1fr',
           gap: esEscritorio ? 'var(--space-5)' : 'var(--space-4)',
           alignItems: 'start',
         }}
       >
-        {alertasStock}
-        {ultimos}
+        {alertaAtrasados}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: esEscritorio ? 'var(--space-5)' : 'var(--space-4)' }}>
+          {alertaTelas}
+          {ultimos}
+        </div>
       </div>
 
       <ExportarPedidos />
