@@ -75,28 +75,35 @@ export default defineConfig(({ mode }) => ({
       manifest: {
         name: 'Realza Hogar - Gestión',
         short_name: 'Realza Hogar',
-        description:
-          'Sistema de gestión de inventario, ventas y pedidos de Realza Hogar',
+        /* `id` fija la identidad de la app: si algún día cambia start_url, sigue siendo la misma app instalada. */
+        id: '/',
+        lang: 'es-CL',
+        description: 'Sistema de gestión de producción de Realza Hogar: pedidos, hojas de fabricación y despachos',
         /* nogal-700, el color de marca real (sidebar, panel de login) --
            antes tenía un morado (#7e14ff) puesto solo de placeholder al
            inicializar el proyecto, antes de tener el logo real. */
         theme_color: '#58402D',
         background_color: '#ffffff',
         display: 'standalone',
+        orientation: 'portrait',
+        scope: '/',
+        /* Se abre en "/": ahí Inicio manda a cada rol a su pantalla (bodega a Pedidos, administrador al Dashboard). */
         start_url: '/',
         icons: [
           {
             src: 'pwa-192x192.png',
             sizes: '192x192',
             type: 'image/png',
+            purpose: 'any',
           },
           {
             src: 'pwa-512x512.png',
             sizes: '512x512',
             type: 'image/png',
+            purpose: 'any',
           },
           {
-            src: 'pwa-512x512.png',
+            src: 'pwa-maskable-512x512.png',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'maskable',
