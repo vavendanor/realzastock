@@ -5,6 +5,7 @@ import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
 import { IconButton } from '../components/ui/IconButton'
 import { Input } from '../components/ui/Input'
+import { useEsEscritorio } from '../hooks/useMediaQuery'
 import { ajustarTela, estaBajoMinimo, formatearMetros, leerMetros, listarTelas, type Tela } from '../lib/telas'
 
 /* Inventario de telas (solo administrador): las 4 telas con su cantidad en metros y su stock mínimo. Los dos números
@@ -13,6 +14,8 @@ function TarjetaTela({ tela, alGuardar }: { tela: Tela; alGuardar: (t: Tela, met
   const [metros, setMetros] = useState(String(tela.metros).replace('.', ','))
   const [minimo, setMinimo] = useState(String(tela.stockMinimo).replace('.', ','))
   const [guardando, setGuardando] = useState(false)
+  const esEscritorio = useEsEscritorio()
+  const tamano = esEscritorio ? 'md' : 'touch'
 
   const nuevosMetros = leerMetros(metros)
   const nuevoMinimo = leerMetros(minimo)
@@ -33,8 +36,8 @@ function TarjetaTela({ tela, alGuardar }: { tela: Tela; alGuardar: (t: Tela, met
   return (
     <Card padding="var(--space-5)">
       <div data-tela={tela.nombre} data-bajo={bajo ? '' : undefined} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-3)' }}>
-          <div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-3)' }}>
+          <div style={{ minWidth: 0 }}>
             <div style={{ font: 'var(--type-h3)', color: 'var(--text-strong)' }}>{tela.nombre}</div>
             <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>
               Hay {formatearMetros(tela.metros)} · mínimo {formatearMetros(tela.stockMinimo)}
@@ -49,9 +52,11 @@ function TarjetaTela({ tela, alGuardar }: { tela: Tela; alGuardar: (t: Tela, met
             </span>
           )}
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 150px), 1fr))', gap: 'var(--space-3)' }}>
           <Input
             label="Cantidad (metros)"
+            size={tamano}
+            wrapperStyle={{ minWidth: 0 }}
             inputMode="decimal"
             value={metros}
             onChange={(e) => setMetros(e.target.value)}
@@ -59,13 +64,15 @@ function TarjetaTela({ tela, alGuardar }: { tela: Tela; alGuardar: (t: Tela, met
           />
           <Input
             label="Mínimo (metros)"
+            size={tamano}
+            wrapperStyle={{ minWidth: 0 }}
             inputMode="decimal"
             value={minimo}
             onChange={(e) => setMinimo(e.target.value)}
             error={minimo !== '' && nuevoMinimo === null ? 'Número de 0 o más' : undefined}
           />
         </div>
-        <Button variant="accent" disabled={!cambio || guardando} iconLeft={<Check size={16} />} onClick={() => void guardar()}>
+        <Button variant="accent" size={esEscritorio ? 'md' : 'touch'} fullWidth={!esEscritorio} disabled={!cambio || guardando} iconLeft={<Check size={16} />} onClick={() => void guardar()}>
           {guardando ? 'Guardando...' : 'Guardar'}
         </Button>
       </div>
@@ -126,7 +133,8 @@ export function Inventario() {
         </Card>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 'var(--space-4)' }}>
+            {/* Una sola columna, una tarjeta debajo de otra, en computador y en celular. */}
+      <div data-lista-telas style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', maxWidth: 720, width: '100%' }}>
         {telas.map((tela) => (
           <TarjetaTela key={`${tela.id}-${tela.metros}-${tela.stockMinimo}`} tela={tela} alGuardar={guardar} />
         ))}

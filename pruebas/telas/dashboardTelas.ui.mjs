@@ -148,9 +148,57 @@ sec('Inventario de telas (administrador)')
   chequeo('sin errores', p.errores.length === 0, p.errores.join(' | '))
   await p.close()
 }
+sec('Diseño del Inventario: una columna y sin desbordes')
+/* Mide las tarjetas con una tela en alerta (el aviso "Stock bajo" ocupa lugar) y con un error de validación a la vista. */
+async function medirDiseno(ancho, alto, movil) {
+  const p = await abrir('administrador', '/inventario', { telas: telasBase('Cuero', 12.5, 30) })
+  await p.setViewport({ width: ancho, height: alto, isMobile: movil, hasTouch: movil })
+  await p.reload({ waitUntil: 'networkidle0' }); await dormir(600)
+  // Un texto inválido muestra el aviso de error dentro de la tarjeta (el caso más ancho).
+  const campo = (await p.$$('[data-tela="Lino"] input'))[0]
+  await campo.focus(); await p.keyboard.down('Control'); await p.keyboard.press('a'); await p.keyboard.up('Control'); await p.keyboard.type('abc'); await dormir(200)
+  const m = await p.evaluate(() => {
+    /* Un DOMRect no viaja por evaluate(): se copia a un objeto simple. */
+    const r = (e) => { const b = e.getBoundingClientRect(); return { left: b.left, top: b.top, right: b.right, bottom: b.bottom, width: b.width, height: b.height } }
+    const tarjetas = [...document.querySelectorAll('[data-tela]')].map((t) => ({
+      nombre: t.getAttribute('data-tela'),
+      c: r(t.parentElement),
+      hijos: [...t.querySelectorAll('*')].filter((e) => r(e).width > 0).map((e) => ({ tag: e.tagName, r: r(e), sw: e.scrollWidth, cw: e.clientWidth })),
+      /* El campo que se toca es la caja del Input (el <input> va adentro, sin borde). */
+      campos: [...t.querySelectorAll('input')].map((i) => r(i.parentElement)),
+      boton: r([...t.querySelectorAll('button')].find((b) => /Guardar|Guardando/.test(b.textContent ?? ''))),
+      badge: t.querySelector('[data-alerta-stock]') ? r(t.querySelector('[data-alerta-stock]')) : null,
+      texto: t.innerText,
+    }))
+    return { tarjetas, scrollX: document.documentElement.scrollWidth - window.innerWidth }
+  })
+  await p.close()
+  return m
+}
+for (const [ancho, alto, movil, nombre] of [[1366, 900, false, 'computador'], [390, 800, true, 'celular 390'], [320, 640, true, 'celular angosto 320']]) {
+  const m = await medirDiseno(ancho, alto, movil)
+  const T = m.tarjetas
+  chequeo(`${nombre}: son 4 tarjetas`, T.length === 4, String(T.length))
+  chequeo(`${nombre}: una debajo de la otra (misma columna, ninguna al lado de otra)`, T.every((t) => Math.abs(t.c.left - T[0].c.left) < 1 && Math.abs(t.c.width - T[0].c.width) < 1) && T.every((t, i) => i === 0 || t.c.top >= T[i - 1].c.bottom - 1), JSON.stringify(T.map((t) => [Math.round(t.c.left), Math.round(t.c.top)])))
+  chequeo(`${nombre}: sin scroll horizontal en la página`, m.scrollX <= 1, String(m.scrollX))
+  chequeo(`${nombre}: todo queda dentro de su tarjeta (nada se sale por los lados)`, T.every((t) => t.hijos.every((h) => h.r.left >= t.c.left - 1 && h.r.right <= t.c.right + 1)), T.map((t) => t.hijos.filter((h) => h.r.right > t.c.right + 1 || h.r.left < t.c.left - 1).map((h) => h.tag + Math.round(h.r.right - t.c.right))).flat().join())
+  chequeo(`${nombre}: ningún texto cortado (el contenido cabe en su caja)`, T.every((t) => t.hijos.every((h) => h.sw <= h.cw + 1)), T.map((t) => t.hijos.filter((h) => h.sw > h.cw + 1).map((h) => h.tag + h.sw + '>' + h.cw)).flat().join())
+  const cuero = T.find((t) => t.nombre === 'Cuero')
+  chequeo(`${nombre}: la tarjeta en alerta muestra nombre, "Hay 12,5 m · mínimo 30 m" y el aviso "Stock bajo" a la vista`, cuero.texto.includes('Cuero') && cuero.texto.includes('Hay 12,5 m · mínimo 30 m') && cuero.texto.includes('Stock bajo') && cuero.badge && cuero.badge.width > 40 && cuero.badge.height > 14, cuero.texto.replace(/\n/g, ' | '))
+  chequeo(`${nombre}: cada tarjeta tiene 2 campos y el botón Guardar, visibles y con ancho`, T.every((t) => t.campos.length === 2 && t.campos.every((c) => c.width >= 100) && t.boton.width >= 100))
+  if (movil) {
+    chequeo(`${nombre}: campos y botón fáciles de tocar (alto de 44 px o más)`, T.every((t) => t.campos.every((c) => c.height >= 44) && t.boton.height >= 44), JSON.stringify(T[0].campos.map((c) => c.height)) + T[0].boton.height)
+    chequeo(`${nombre}: el botón Guardar ocupa todo el ancho de la tarjeta`, T.every((t) => t.boton.width >= t.c.width - 60), JSON.stringify([T[0].boton.width, T[0].c.width]))
+  } else {
+    chequeo('computador: la tarjeta no se estira de más (queda legible)', T[0].c.width <= 721, String(T[0].c.width))
+  }
+}
 {
   const p = await abrir('administrador', '/inventario', { movil: true })
-  chequeo('celular: 4 tarjetas, sin desborde horizontal', (await p.$$('[data-tela]')).length === 4 && (await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)))
+  const campo = (await p.$$('[data-tela="Lino"] input'))[0]
+  await campo.focus(); await p.keyboard.down('Control'); await p.keyboard.press('a'); await p.keyboard.up('Control'); await p.keyboard.type('90')
+  await p.evaluate(() => [...document.querySelectorAll('[data-tela="Lino"] button')].find((b) => /Guardar/.test(b.textContent ?? ''))?.click()); await dormir(700)
+  chequeo('celular: se puede guardar un cambio y la página sigue sin scroll horizontal', (await texto(p)).includes('Hay 90 m · mínimo 30 m') && (await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)))
   await p.close()
 }
 
